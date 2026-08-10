@@ -355,7 +355,9 @@ Automation: `feature_pipeline.yml` hourly, `training_pipeline.yml` daily,
 forecast horizons, a hazard alert banner with health guidance, a forecast chart
 against the hazard threshold, a 7/14/30-day trend with summary statistics,
 model performance on held-out data, SHAP feature importance (forecast-weather
-features highlighted in red), and current pollutant/weather readings.
+features highlighted in pink), and current pollutant/weather readings, all
+presented as glassmorphism panels over an animated night sky (`webapp/theme.py` -
+purely cosmetic, no data or model logic lives there).
 
 ![Deployed dashboard](docs/screenshots/dashboard.png)
 
@@ -367,7 +369,7 @@ banner is evaluating each horizon separately rather than raising a blanket
 warning.
 
 The SHAP panel is the more interesting part: among the top features for the
-+24h model, the red bars — `fc24_wind_speed_10m_w24_mean`,
++24h model, the pink bars — `fc24_wind_speed_10m_w24_mean`,
 `fc24_boundary_layer_height_w24_min`, `fc24_precipitation_w24_sum`,
 `fc24_relative_humidity_2m_w24_mean`, `fc24_wind_mean_lead` — are all
 *forecast* weather valid at the target hour. That is the §2.2 design showing up
