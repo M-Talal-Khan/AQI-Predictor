@@ -42,6 +42,7 @@ from config import (
     AQ_VARS,
     OPENMETEO_AQ_URL,
     AQ_ARCHIVE_START,
+    now_local_naive,
 )
 
 # Open-Meteo's CAMS names vs the column names used across this project.
@@ -133,8 +134,12 @@ def trim_to_now(df: pd.DataFrame) -> pd.DataFrame:
     Storing those as observed AQI would mean training targets built from a
     model's own forecast rather than from what actually happened, and would
     make the most recent rows look artificially predictable. Observations only.
+
+    "Now" comes from config.now_local_naive(), NOT datetime.now(): the data is
+    Asia/Karachi wall time, and GitHub Actions runners are UTC. Using the
+    machine clock silently drops the five newest hours on every CI run.
     """
-    now = pd.Timestamp.now().floor("h")
+    now = pd.Timestamp(now_local_naive()).floor("h")
     return df[df["observed_at"] <= now].reset_index(drop=True)
 
 
@@ -162,7 +167,7 @@ def get_aq_upto_now(start_date: str = AQ_ARCHIVE_START) -> pd.DataFrame:
     Same archive-lags-reality stitch as the weather client: the dated archive
     mode trails real time by several days, so the tail is filled from live mode.
     """
-    today = date.today()
+    today = now_local_naive().date()  # city-local date, not the runner's UTC date
     archive_end = today - timedelta(days=8)
 
     frames = []
@@ -185,7 +190,7 @@ def fetch_current_reading() -> dict:
     can treat either source interchangeably.
     """
     df = fetch_aq_live(past_days=2, forecast_days=1)
-    now = pd.Timestamp.now().floor("h")
+    now = pd.Timestamp(now_local_naive()).floor("h")
     observed = df[(df["observed_at"] <= now) & df["aqi"].notna()]
     if observed.empty:
         raise AQClientError("No non-null AQ observation at or before the current hour")

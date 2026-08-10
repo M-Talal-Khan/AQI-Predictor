@@ -136,6 +136,27 @@ def category_advice(aqi_value: float) -> str:
     return AQI_CATEGORY_ADVICE.get(categorize_aqi(aqi_value), "")
 
 
+def now_local_naive():
+    """
+    Current wall-clock time in the city's timezone, as a naive datetime.
+
+    Every timestamp in this project is Asia/Karachi local time without a
+    tzinfo, because that is how Open-Meteo returns data when asked for
+    timezone=Asia/Karachi. Comparing those against datetime.now() only works
+    if the machine happens to be on Karachi time - true on the development
+    laptop, false on GitHub Actions runners, which are UTC.
+
+    That mismatch is silent and costly: the hourly pipeline would trim every
+    observation newer than "UTC now" interpreted as local, discarding the five
+    most recent hours on every CI run while still reporting success. Always
+    derive "now" from here, never from datetime.now().
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo(TIMEZONE)).replace(tzinfo=None)
+
+
 def categorize_aqi(aqi_value: float) -> str:
     for low, high, label in AQI_CATEGORIES:
         if low <= aqi_value <= high:

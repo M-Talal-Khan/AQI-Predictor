@@ -36,6 +36,7 @@ from config import (
     categorize_aqi,
     category_color,
     category_advice,
+    now_local_naive,
 )
 from training_pipeline.predict import (
     MODEL_DIR,
@@ -73,7 +74,10 @@ def get_importance(horizon: int):
 
 
 def current_hour_key() -> str:
-    return datetime.now().strftime("%Y-%m-%dT%H")
+    # City-local hour, not the server's. Streamlit Cloud runs UTC, and the data
+    # is Asia/Karachi wall time - keying on UTC would roll the cache over at the
+    # wrong moment relative to when new hourly data actually lands.
+    return now_local_naive().strftime("%Y-%m-%dT%H")
 
 
 # --------------------------------------------------------------------------
@@ -306,7 +310,7 @@ def main():
     st.caption(
         f"Data: Open-Meteo CAMS air quality + Open-Meteo weather forecast · "
         f"Latest observation {obs_time:%Y-%m-%d %H:%M} (Asia/Karachi) · "
-        f"Page rendered {datetime.now():%H:%M}"
+        f"Page rendered {now_local_naive():%H:%M} PKT"
     )
 
 

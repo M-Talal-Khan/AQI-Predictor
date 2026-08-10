@@ -46,6 +46,7 @@ from config import (
     WEATHER_VARS,
     OPENMETEO_ARCHIVE_URL,
     OPENMETEO_FORECAST_URL,
+    now_local_naive,
 )
 
 
@@ -174,7 +175,7 @@ def get_weather_upto_now(start_date: str) -> pd.DataFrame:
     gap. Without this stitch, every training run would be blind to the most
     recent week - exactly the week the live model has to predict from.
     """
-    today = date.today()
+    today = now_local_naive().date()  # city-local date, not the runner's UTC date
     archive_end = today - timedelta(days=6)
 
     frames = []
