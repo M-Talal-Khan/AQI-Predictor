@@ -70,13 +70,15 @@ There are two requirement sets:
 
 | File | For | Python |
 |---|---|---|
-| `requirements.txt` | the Streamlit dashboard only — light, no TF/Hopsworks | any 3.9+ |
+| `requirements.txt` | the Streamlit dashboard | any 3.9+ |
 | `requirements-pipeline.txt` | feature pipeline, training, backfill | **3.9–3.12** |
 
-The split exists so the deployed dashboard isn't forced to install TensorFlow
-and the Hopsworks SDK just to draw charts. It loads models from the repo and
-live data from keyless APIs; where a Keras model can't be loaded it falls back
-to the non-TF model saved alongside it.
+The split keeps the dashboard from having to install TensorFlow just to draw
+charts. It does include `hopsworks`, but gated to `python_version < "3.13"`, so
+the dashboard reads the feature store and model registry where the SDK can be
+installed and falls back to the live APIs plus the repo's model copies where it
+cannot. Likewise, where a Keras model won't load it uses the non-TF model saved
+beside it. The footer states which source is actually in use.
 
 The pipeline set needs Python **3.9–3.12**: TensorFlow is pinned to 2.18.1 for
 `protobuf` compatibility with `hopsworks`, and that release ships no wheels for
@@ -133,15 +135,19 @@ permanent hole in the lag features.
    serve from the feature store and model registry. Without them the app falls
    back to the live APIs and the models committed in the repo — it still works,
    it just isn't reading the store. The footer states which source is in use.
-4. No Python version needs choosing. `requirements.txt` carries no TensorFlow
-   and no upper caps on pandas/numpy, so it resolves on whatever interpreter
-   Streamlit provisions (currently 3.14). Verified end-to-end on pandas 3.0.5 /
-   numpy 2.5.2 / scikit-learn 1.9 with neither TensorFlow nor Hopsworks
-   installed: the app runs and serves the non-TF fallback models.
+4. Choose **Python 3.11** under **Advanced settings** if you want the
+   feature-store path. Streamlit Cloud otherwise provisions Python 3.14, where
+   `hopsworks` cannot install at all — `confluent-kafka` publishes no cp314
+   wheels — and the app will run on the live-API fallback instead.
 
-Note that Streamlit Cloud fixes the Python version **when the app is created** —
-it cannot be changed afterwards from the settings page. That is why this project
-avoids depending on a particular version rather than requiring one.
+Streamlit Cloud fixes the Python version **when the app is created**; it cannot
+be changed later from the settings page, so a new app is needed to switch. The
+build never breaks either way: `hopsworks` is marker-gated, so on 3.14 it is
+simply skipped. Verified in both configurations — against the real project the
+footer reads `Source: Hopsworks feature store`; with the SDK absent (pandas
+3.0.5 / numpy 2.5.2 / scikit-learn 1.9, no TensorFlow) it reads
+`Source: live Open-Meteo APIs` and serves the non-TF fallback models. Zero
+exceptions in both.
 
 The daily training workflow commits refreshed models, and Streamlit Cloud
 redeploys on push, so the deployed app keeps up to date on its own.
@@ -169,9 +175,23 @@ webapp/app.py                         Streamlit dashboard
 notebooks/eda.ipynb                   EDA
 ```
 
-## Dependency note
+## Dependency notes
 
-`hopsworks` pins `protobuf<5`; TensorFlow ≥2.19 needs `protobuf>=6.31`. Those
-ranges don't intersect, so `requirements.txt` pins **`tensorflow==2.18.1`**, the
-newest TF that can coexist with the feature store. Re-check this if you bump
-TensorFlow.
+Three constraints are load-bearing here; changing any of them silently breaks
+something, so they are worth knowing before touching the requirement files.
+
+**TensorFlow is pinned to 2.18.1** in `requirements-pipeline.txt`. `hopsworks`
+pins `protobuf<5` in every published version, while TensorFlow ≥2.19 needs
+`protobuf>=6.31` — the ranges don't intersect. 2.18.1 allows
+`protobuf>=3.20.3,<6.0.0dev`, which overlaps at 4.25.x.
+
+**Streamlit is capped below 1.61** in `requirements.txt`. From 1.61 it requires
+`protobuf>=5.26.1`, which again collides with the `hopsworks` pin — uncapped,
+the dashboard can never reach the feature store.
+
+**`hopsworks[python]`, not bare `hopsworks`,** in the pipeline set. Reads go over
+Arrow Flight, but feature-group *writes* go through Kafka, and hsfs gates that
+path on `HAS_CONFLUENT_KAFKA`. `confluent-kafka` ships only in that extra, so
+without it `fg.insert()` raises `ModuleNotFoundError` while reads keep working —
+which presents as a pipeline running green while the feature store never
+advances.

@@ -286,11 +286,13 @@ therefore also saves the best **non-TensorFlow** model as
 load fails — a small accuracy cost instead of a dashboard outage.
 
 **Serving caching** (as specified): models load once per process via
-`@st.cache_resource`; live features use `@st.cache_data(ttl=3600)` keyed on the
+`@st.cache_resource`, so neither the model registry nor a Keras deserialisation
+is hit on a page view; feature data uses `@st.cache_data(ttl=3600)` keyed on the
 current hour, so the cache refreshes when new hourly data lands rather than at
-an arbitrary offset. All feature construction lives in `predict.py` and reuses
-the training-time `build_features()`, so the dashboard cannot drift from what
-the models were trained on.
+an arbitrary offset. The dashboard holds no feature logic of its own — it either
+reads rows the pipeline already engineered, or calls the same
+training-time `build_features()` via `predict.py`, so serving cannot drift from
+what the models were trained on. See §7 for the two serving paths.
 
 **Self-healing hourly pipeline.** The hourly job re-fetches a 14-day window and
 upserts, rather than writing a single row. A missed run (Actions outage, API
@@ -357,9 +359,14 @@ features highlighted in red), and current pollutant/weather readings.
 
 ![Deployed dashboard](docs/screenshots/dashboard.png)
 
-Captured from the deployed app. Lahore was at AQI 212 ("Very Unhealthy") with
-all three horizons forecast above the hazard threshold, so the alert banner is
-firing. The SHAP panel is the interesting part: among the top features for the
+Captured from the deployed app. Lahore was at AQI 170 ("Unhealthy"), with the
+three horizons forecast at 149, 163 and 157. Note that the alert names only
+**+48h and +72h**: the +24h forecast of 149 sits just under the threshold of
+151 and is rendered in the "Unhealthy for Sensitive Groups" colour, so the
+banner is evaluating each horizon separately rather than raising a blanket
+warning.
+
+The SHAP panel is the more interesting part: among the top features for the
 +24h model, the red bars — `fc24_wind_speed_10m_w24_mean`,
 `fc24_boundary_layer_height_w24_min`, `fc24_precipitation_w24_sum`,
 `fc24_relative_humidity_2m_w24_mean`, `fc24_wind_mean_lead` — are all
