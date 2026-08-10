@@ -43,14 +43,27 @@ jobs:
       # The Streamlit deployment reads models straight from the repo, so the
       # daily run commits refreshed artifacts. This keeps the dashboard current
       # without giving Streamlit Cloud credentials to the model registry.
+      # Convenience only: keeps the Streamlit deployment's models fresh. The
+      # real deliverables (trained models in the Hopsworks registry, plus the
+      # uploaded artifacts above) are already done by this point, so a failure
+      # to push must not mark the whole training run red - it would hide a
+      # genuine training failure behind a permissions problem.
       - name: Commit refreshed models
+        continue-on-error: true
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f models/
           if git diff --staged --quiet; then
             echo "No model changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: refresh trained models [skip ci]"
+          if git push; then
+            echo "Pushed refreshed models."
           else
-            git commit -m "chore: refresh trained models [skip ci]"
-            git push
+            echo "::warning title=Could not push models::git push was rejected. \
+            Enable Settings -> Actions -> General -> Workflow permissions -> \
+            'Read and write permissions'. Models are still registered in the \
+            Hopsworks model registry and attached to this run as artifacts."
           fi
