@@ -346,10 +346,25 @@ def main():
         for (label, col), c in zip(weather.items(), wc):
             c.metric(label, f"{last[col]:.1f}" if pd.notna(last.get(col)) else "—")
 
-    source_label = {
-        "hopsworks": "Hopsworks feature store (engineered by the hourly pipeline)",
-        "live-api": "live Open-Meteo APIs (feature store unavailable)",
-    }.get(source, source)
+    # When we fall back, say WHY. Three quite different causes - wrong Python,
+    # missing secrets, or a failed read - otherwise present as the same vague
+    # "unavailable", which costs a round-trip through the build logs to tell
+    # apart every time.
+    if source == "hopsworks":
+        source_label = "Hopsworks feature store (engineered by the hourly pipeline)"
+    else:
+        import importlib.util
+        pyver = f"Python {sys.version_info.major}.{sys.version_info.minor}"
+        if importlib.util.find_spec("hopsworks") is None:
+            why = (f"hopsworks SDK not installed on {pyver} — it is gated to "
+                   f"Python below 3.13, so deploy on 3.11 to enable it")
+        elif not os.getenv("HOPSWORKS_API_KEY"):
+            why = "HOPSWORKS_API_KEY not found — add it under the app's Secrets"
+        elif not os.getenv("HOPSWORKS_PROJECT_NAME"):
+            why = "HOPSWORKS_PROJECT_NAME not found — add it under the app's Secrets"
+        else:
+            why = f"feature-store read failed on {pyver}; using live data instead"
+        source_label = f"live Open-Meteo APIs ({why})"
 
     st.caption(
         f"Source: {source_label} · Open-Meteo CAMS air quality + weather forecast · "
