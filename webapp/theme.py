@@ -30,30 +30,36 @@ CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --glass: rgba(255,255,255,0.07);
-  --glass-strong: rgba(255,255,255,0.11);
-  --glass-border: rgba(255,255,255,0.16);
+  /* Dark, mostly-opaque glass - readability over transparency. An earlier,
+     lighter/more-see-through fill let bright bits of the animated sky bleed
+     through inconsistently, dimming contrast under text wherever a star or
+     nebula happened to sit. This fill is dark enough on its own that legibility
+     no longer depends on what is animating behind it. */
+  --glass: rgba(16,10,28,0.62);
+  --glass-strong: rgba(16,10,28,0.80);
+  --glass-border: rgba(255,255,255,0.14);
   --accent: #7dd3fc;
-  --accent2: #c084fc;
-  --text: #eaeef7;
-  --text-dim: #a3adc2;
+  --accent2: #e9a6ff;
+  --text: #f3f2fa;
+  --text-dim: #b7b3cc;
 }
 
 /* ---- sky backdrop on the real app surface ----
-   The aurora blobs and the base gradient are BOTH part of this element's own
-   background (not a separate positioned layer) so there is no stacking-context
-   ambiguity to get wrong: an element's own background is always painted, full
-   stop, before any question of z-index arises. The three radial layers are
-   animated purely via background-position, which is enough motion to read as
-   a slowly drifting sky without needing a second element at all. */
+   Black/purple night palette - no blue-navy base. The aurora blobs and the
+   base gradient are BOTH part of this element's own background (not a
+   separate positioned layer) so there is no stacking-context ambiguity to get
+   wrong: an element's own background is always painted, full stop, before any
+   question of z-index arises. The radial layers animate purely via
+   background-position, enough motion to read as a slowly drifting sky without
+   a second element. */
 [data-testid="stAppViewContainer"] {
   background-image:
-    radial-gradient(circle at 30% 30%, rgba(125,211,252,.32), transparent 42%),
-    radial-gradient(circle at 70% 40%, rgba(192,132,252,.28), transparent 44%),
-    radial-gradient(circle at 50% 80%, rgba(244,114,182,.20), transparent 46%),
-    radial-gradient(ellipse 90% 55% at 12% -8%,  rgba(120,60,200,.35) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 55% at 88% 0%,    rgba(30,120,190,.30) 0%, transparent 60%),
-    linear-gradient(180deg, #0a0e1c 0%, #121a33 45%, #1b1440 100%) !important;
+    radial-gradient(circle at 30% 25%, rgba(147,51,234,.28), transparent 42%),
+    radial-gradient(circle at 72% 38%, rgba(88,28,135,.30), transparent 46%),
+    radial-gradient(circle at 50% 82%, rgba(219,39,119,.14), transparent 46%),
+    radial-gradient(ellipse 90% 55% at 12% -8%, rgba(76,29,149,.40) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 55% at 88% 0%,   rgba(30,10,50,.45) 0%, transparent 60%),
+    linear-gradient(180deg, #050308 0%, #0d0716 40%, #170a28 75%, #1c0a30 100%) !important;
   background-size: 160% 160%, 170% 170%, 150% 150%, 100% 100%, 100% 100%, 100% 100%;
   background-repeat: no-repeat !important;
   background-attachment: fixed !important;
@@ -135,10 +141,10 @@ div[data-testid="stVerticalBlockBorderWrapper"]:hover {
   transition: transform .22s ease, box-shadow .22s ease;
 }
 .glass-tile:hover { transform: translateY(-4px) scale(1.015); box-shadow: 0 12px 30px rgba(0,0,0,.45); }
-.glass-tile .g-label { font-size: .8rem; font-weight: 600; opacity: .85; letter-spacing: .04em; text-transform: uppercase; }
-.glass-tile .g-value { font-family: 'Space Grotesk', sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1.05; margin: 2px 0; }
-.glass-tile .g-cat { font-size: .82rem; font-weight: 700; }
-.glass-tile .g-sub { font-size: .72rem; opacity: .82; margin-top: 2px; }
+.glass-tile .g-label { font-size: .8rem; font-weight: 700; opacity: .9; letter-spacing: .04em; text-transform: uppercase; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.glass-tile .g-value { font-family: 'Space Grotesk', sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1.05; margin: 2px 0; text-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.glass-tile .g-cat { font-size: .84rem; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.glass-tile .g-sub { font-size: .74rem; opacity: .9; margin-top: 2px; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
 
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 6px 22px rgba(220,40,60,.25), inset 0 1px 0 rgba(255,255,255,.18); }
@@ -168,7 +174,9 @@ div[data-testid="stVerticalBlockBorderWrapper"]:hover {
   background: var(--glass); border: 1px solid var(--glass-border);
   border-radius: 14px; padding: 10px 6px;
 }
-[data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; }
+[data-testid="stMetricValue"] { color: var(--text) !important; }
+[data-testid="stMetricLabel"] { color: var(--text-dim) !important; }
+[data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; background: var(--glass-strong); }
 div[role="radiogroup"] label {
   background: var(--glass); border: 1px solid var(--glass-border);
   border-radius: 999px !important; padding: 4px 14px !important; margin-right: 6px;
@@ -214,6 +222,40 @@ _BACKGROUND_HTML = """
       r: big ? (Math.random() * 2.2 + 2.6) : (Math.random() * 1.4 + 1.1),
       tw: Math.random() * Math.PI * 2,
       hue: Math.random() < 0.4 ? '186,230,253' : (Math.random() < 0.7 ? '221,190,254' : '251,182,206')
+    });
+  }
+
+  // Clouds: soft clusters of overlapping radial-gradient puffs, dark violet,
+  // drifting slowly and independently of the cursor (unlike the star field
+  // above, these are a passive far-background layer - real night clouds don't
+  // dodge anything). Each puff's gradient is built ONCE, in cloud-local
+  // coordinates; every frame just translates and fillRects it, which is cheap
+  // - recreating gradients per frame would not be.
+  var clouds = [];
+  var CLOUD_N = Math.max(3, Math.min(6, Math.round(W / 480)));
+  for (var ci = 0; ci < CLOUD_N; ci++) {
+    var puffs = [];
+    var puffCount = 4 + Math.floor(Math.random() * 4);
+    var spread = 90 + Math.random() * 70;
+    for (var pi = 0; pi < puffCount; pi++) {
+      var dx = (Math.random() - 0.5) * spread * 1.7;
+      var dy = (Math.random() - 0.5) * spread * 0.5;
+      var rad = spread * (0.5 + Math.random() * 0.45);
+      // Lighter, cooler-grey than the sky behind it, like moonlit cloud vapor -
+      // a cloud tinted the same purple as its background has no contrast to
+      // read by at all, which is what made the first pass invisible.
+      var g = ctx.createRadialGradient(dx, dy, 0, dx, dy, rad);
+      g.addColorStop(0,    'rgba(168,158,208,0.62)');
+      g.addColorStop(0.55, 'rgba(120,105,165,0.34)');
+      g.addColorStop(1,    'rgba(90,75,130,0)');
+      puffs.push({ dx: dx, dy: dy, r: rad, grad: g });
+    }
+    clouds.push({
+      x: Math.random() * W,
+      y: H * (0.04 + Math.random() * 0.34),
+      vx: 0.03 + Math.random() * 0.035,
+      alpha: 0.6 + Math.random() * 0.3,
+      puffs: puffs
     });
   }
 
@@ -271,6 +313,24 @@ _BACKGROUND_HTML = """
       ctx.fill();
       ctx.restore();
     }
+
+    // Clouds draw AFTER stars so they visibly veil whatever star sits behind
+    // them as they pass - the depth cue that sells "sky", not just "dots".
+    for (var c = 0; c < clouds.length; c++) {
+      var cl = clouds[c];
+      cl.x += cl.vx;
+      if (cl.x - 260 > W) cl.x = -260;
+      ctx.save();
+      ctx.translate(cl.x, cl.y);
+      ctx.globalAlpha = cl.alpha;
+      for (var pf = 0; pf < cl.puffs.length; pf++) {
+        var puff = cl.puffs[pf];
+        ctx.fillStyle = puff.grad;
+        ctx.fillRect(puff.dx - puff.r, puff.dy - puff.r, puff.r * 2, puff.r * 2);
+      }
+      ctx.restore();
+    }
+
     requestAnimationFrame(frame);
   }
   frame();
@@ -301,13 +361,18 @@ def style_fig(fig):
     try:
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(255,255,255,0.03)",
-            font=dict(color="#eaeef7", family="Inter, sans-serif"),
-            xaxis=dict(gridcolor="rgba(255,255,255,0.09)", zerolinecolor="rgba(255,255,255,0.09)"),
-            yaxis=dict(gridcolor="rgba(255,255,255,0.09)", zerolinecolor="rgba(255,255,255,0.09)"),
-            legend=dict(bgcolor="rgba(0,0,0,0)"),
-            hoverlabel=dict(bgcolor="#1c2540", font_color="#eaeef7",
-                            bordercolor="rgba(255,255,255,0.18)"),
+            # A darker, more opaque plot area than a first pass used - readable
+            # data/gridlines regardless of what the animated sky is doing behind
+            # the glass panel the chart sits in.
+            plot_bgcolor="rgba(8,5,16,0.45)",
+            font=dict(color="#f3f2fa", family="Inter, sans-serif", size=13),
+            xaxis=dict(gridcolor="rgba(255,255,255,0.14)", zerolinecolor="rgba(255,255,255,0.16)",
+                      tickfont=dict(color="#d8d4e8")),
+            yaxis=dict(gridcolor="rgba(255,255,255,0.14)", zerolinecolor="rgba(255,255,255,0.16)",
+                      tickfont=dict(color="#d8d4e8")),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#f3f2fa")),
+            hoverlabel=dict(bgcolor="#1a0f2e", font_color="#f3f2fa",
+                            bordercolor="rgba(255,255,255,0.22)"),
         )
     except Exception:
         pass
@@ -319,7 +384,7 @@ def glass_tile(label: str, value: float, category: str, color: str, sub: str = "
     text = "#10131f" if category in ("Good", "Moderate", "Unhealthy for Sensitive Groups") else "#fff"
     hazard_class = " g-hazard" if hazard else ""
     return f"""
-    <div class="glass-tile{hazard_class}" style="background:linear-gradient(160deg,{color}cc,{color}88);color:{text};">
+    <div class="glass-tile{hazard_class}" style="background:linear-gradient(160deg,{color}f0,{color}b8);color:{text};">
       <div class="g-label">{label}</div>
       <div class="g-value">{value:.0f}</div>
       <div class="g-cat">{category}</div>
