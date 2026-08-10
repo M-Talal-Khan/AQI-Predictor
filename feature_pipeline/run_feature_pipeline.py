@@ -36,7 +36,7 @@ import pandas as pd
 from feature_pipeline.features import build_features
 from feature_pipeline.openmeteo_aq_client import fetch_aq_live, trim_to_now
 from feature_pipeline.weather_forecast_client import fetch_weather_forecast
-from feature_pipeline.store import write_features, backend_name
+from feature_pipeline.store import write_features, backend_name, hopsworks_available
 from config import FORECAST_HORIZONS
 
 # Long enough to cover the longest lag/rolling window (168h) plus slack, so
@@ -44,8 +44,19 @@ from config import FORECAST_HORIZONS
 WINDOW_PAST_DAYS = 14
 
 
-def run(local_only: bool = False, past_days: int = WINDOW_PAST_DAYS):
-    print(f"Storage backend: {backend_name()}")
+def run(local_only: bool = False, past_days: int = WINDOW_PAST_DAYS,
+        strict: bool = None):
+    # In CI the local parquet mirror lives on a throwaway container filesystem,
+    # so a Hopsworks write that quietly fails leaves nothing behind while the
+    # job still reports success. Default to strict whenever running under
+    # GitHub Actions; stay lenient for interactive local runs.
+    if strict is None:
+        strict = os.getenv("GITHUB_ACTIONS") == "true" and not local_only
+
+    print(f"Storage backend: {backend_name()}  (strict={strict})")
+    if not local_only and not hopsworks_available():
+        print("  NOTE: hopsworks not importable or HOPSWORKS_API_KEY unset - "
+              "writes will not reach the feature store")
 
     print(f"Fetching AQ observations (last {past_days} days)...")
     # trim_to_now: the live endpoint returns whole days, so later hours of today
@@ -90,7 +101,7 @@ def run(local_only: bool = False, past_days: int = WINDOW_PAST_DAYS):
         print(f"  WARNING: horizons {missing} lack forecast weather on the newest row")
 
     print(f"\nWriting {len(engineered)} rows (upsert) to the feature store...")
-    write_features(engineered, prefer_local=local_only)
+    write_features(engineered, prefer_local=local_only, strict=strict)
     print("Done.")
 
 

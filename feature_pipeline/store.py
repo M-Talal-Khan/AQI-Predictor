@@ -166,18 +166,40 @@ def read_features_local() -> pd.DataFrame:
 # public API - backend-agnostic
 # --------------------------------------------------------------------------
 
-def write_features(df: pd.DataFrame, prefer_local: bool = False):
+class FeatureStoreWriteError(RuntimeError):
+    """Hopsworks was configured and expected to accept a write, but did not."""
+
+
+def write_features(df: pd.DataFrame, prefer_local: bool = False, strict: bool = False):
     """
     Write engineered rows to whichever backend is available.
 
     Always writes the local mirror. That is deliberate: the mirror doubles as
     the offline training source, so it must stay current even when Hopsworks
     is the primary store.
+
+    `strict` controls what happens when Hopsworks is configured but the write
+    fails. Off, the error is logged and the run continues on the local mirror -
+    right for ad-hoc local use, where a transient outage should not stop work.
+    ON is right for scheduled runs: in CI the local mirror is a throwaway
+    container filesystem, so swallowing the error means the job reports success
+    while the feature store silently stops advancing. That is the same
+    failure-that-looks-like-success problem that made the original AQICN source
+    unusable, and it is worse here because nothing external contradicts it.
     """
     path = write_features_local(df)
     print(f"  local mirror updated: {path} ({len(df)} rows in)")
 
-    if prefer_local or not hopsworks_available():
+    if prefer_local:
+        return None
+
+    if not hopsworks_available():
+        msg = ("Hopsworks unavailable: "
+               + ("HOPSWORKS_API_KEY is not set" if not HOPSWORKS_API_KEY
+                  else "the hopsworks package failed to import"))
+        if strict:
+            raise FeatureStoreWriteError(msg)
+        print(f"  {msg} - local mirror only")
         return None
 
     try:
@@ -188,8 +210,14 @@ def write_features(df: pd.DataFrame, prefer_local: bool = False):
               f"{FEATURE_GROUP_NAME} v{FEATURE_GROUP_VERSION}")
         return fg
     except Exception as e:
-        # Do not fail the pipeline on a store outage - the local mirror has the
-        # data and the next run will re-sync.
+        if strict:
+            raise FeatureStoreWriteError(
+                f"Hopsworks write failed ({type(e).__name__}: {e}). "
+                f"project={HOPSWORKS_PROJECT_NAME!r}, "
+                f"api_key_set={bool(HOPSWORKS_API_KEY)}"
+            ) from e
+        # Non-strict: a transient outage should not stop local work; the mirror
+        # has the data and the next run re-syncs the overlapping window.
         print(f"  WARNING: Hopsworks write failed, local mirror still updated: {e}")
         return None
 
