@@ -81,6 +81,86 @@ def build_live_frame(past_days: int = LIVE_PAST_DAYS) -> pd.DataFrame:
     return frame[frame["aqi"].notna()].reset_index(drop=True)
 
 
+def build_frame_from_store(hours: int = 24 * 30) -> pd.DataFrame:
+    """
+    Read recent engineered rows straight out of the Hopsworks feature store.
+
+    This is the point of having a feature store: the hourly pipeline already
+    computed every feature, including the fc{H}_* forecast-weather block, at
+    ingestion time using the forecast that was valid then. Serving from those
+    rows means the dashboard predicts from exactly the values that were
+    written, with no chance of the serving path recomputing something subtly
+    different from what training saw.
+
+    Returns an empty frame if Hopsworks is unavailable, so the caller can fall
+    back to building features live.
+    """
+    from feature_pipeline.store import hopsworks_available
+
+    if not hopsworks_available():
+        return pd.DataFrame()
+
+    try:
+        from feature_pipeline.store import read_all_features
+
+        df = read_all_features()
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        df = df.copy()
+        df["observed_at"] = pd.to_datetime(df["observed_at"])
+        # The store round-trips timestamps as UTC-labelled; the values are
+        # Asia/Karachi wall time (see config.now_local_naive). Strip the label
+        # rather than convert, or every timestamp shifts by five hours.
+        if getattr(df["observed_at"].dtype, "tz", None) is not None:
+            df["observed_at"] = df["observed_at"].dt.tz_localize(None)
+
+        df = df.sort_values("observed_at").reset_index(drop=True)
+        df = df[df["aqi"].notna()]
+        return df.tail(hours).reset_index(drop=True)
+    except Exception as e:
+        print(f"feature-store read failed ({type(e).__name__}: {e}); "
+              f"falling back to live API")
+        return pd.DataFrame()
+
+
+def load_bundle_from_registry(horizon: int, model_dir: str = MODEL_DIR):
+    """
+    Fetch a model from the Hopsworks model registry instead of the repo.
+
+    Downloads into `model_dir` and then hands off to load_bundle, so the
+    TensorFlow-optional fallback logic still applies. Callers should cache this
+    (the dashboard wraps it in @st.cache_resource) - the brief is explicit that
+    the registry must not be hit on every page load, and a download per render
+    would be far worse than a local read.
+    """
+    try:
+        from feature_pipeline.store import get_project
+        from config import MODEL_NAME
+
+        mr = get_project().get_model_registry()
+        models = mr.get_models(f"{MODEL_NAME}_{horizon}h")
+        if not models:
+            return None
+        best = max(models, key=lambda m: m.version)
+        path = best.download()
+
+        for fname in os.listdir(path):
+            if fname.startswith(f"model_{horizon}h"):
+                shutil_copy(os.path.join(path, fname), os.path.join(model_dir, fname))
+        return load_bundle(horizon, model_dir)
+    except Exception as e:
+        print(f"registry fetch failed for {horizon}h ({type(e).__name__}: {e}); "
+              f"using the repo copy")
+        return load_bundle(horizon, model_dir)
+
+
+def shutil_copy(src, dst):
+    import shutil
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copy2(src, dst)
+
+
 def latest_usable_row(frame: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
     """
     Newest row whose features are all present.

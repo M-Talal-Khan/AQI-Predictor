@@ -129,8 +129,10 @@ permanent hole in the lag features.
 1. Push this repo to GitHub.
 2. Go to https://share.streamlit.io → **New app**, select the repo, branch
    `main`, main file `webapp/app.py`.
-3. No secrets are required — the dashboard reads models from the repo and
-   fetches live data from keyless APIs.
+3. Add `HOPSWORKS_API_KEY` and `HOPSWORKS_PROJECT_NAME` under **Secrets** to
+   serve from the feature store and model registry. Without them the app falls
+   back to the live APIs and the models committed in the repo — it still works,
+   it just isn't reading the store. The footer states which source is in use.
 4. No Python version needs choosing. `requirements.txt` carries no TensorFlow
    and no upper caps on pandas/numpy, so it resolves on whatever interpreter
    Streamlit provisions (currently 3.14). Verified end-to-end on pandas 3.0.5 /

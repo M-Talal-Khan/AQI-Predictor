@@ -27,10 +27,23 @@
 # on 3.14 while resolving fine on 3.11. Leaving it open lets pip pick 2.x on
 # 3.11 and 3.x on 3.14, and the code paths used here are stable across both.
 
-streamlit>=1.32
+# streamlit is capped below 1.61: from that release it requires protobuf>=5.26.1,
+# while hopsworks pins protobuf<5.0.0 in every published version. Uncapped, the
+# dashboard can never read the feature store. 1.60 is the newest that allows
+# protobuf 3.20-7 and therefore coexists with the SDK.
+streamlit>=1.32,<1.61
 plotly>=5.18
 pandas>=2.0
 numpy>=1.26
+
+# Lets the dashboard serve from the feature store and the model registry rather
+# than rebuilding features from the live APIs. Marker-gated because Streamlit
+# Cloud currently provisions Python 3.14, where hopsworks cannot install:
+# confluent-kafka publishes no cp314 wheels. Where the marker excludes it the
+# app falls back to the live-API path automatically, so the build never breaks -
+# deploy on Python 3.11 to get the feature-store path in production.
+hopsworks>=4.0,<6.0; python_version < "3.13"
+pyarrow>=17.0; python_version < "3.13"
 scikit-learn>=1.3        # StandardScaler inside the saved model bundles
 xgboost>=2.0             # 24h model, and the 48h/72h non-TF fallbacks
 lightgbm>=4.0            # in case a retrain picks LightGBM as the fallback

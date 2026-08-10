@@ -28,6 +28,18 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+# Bridge Streamlit secrets into the environment BEFORE importing config, which
+# reads credentials via os.getenv at import time. On Streamlit Cloud there is no
+# .env file and secrets arrive only through st.secrets, so without this the app
+# can never see the feature store. setdefault, so a real environment variable
+# (local .env, CI) still wins.
+try:
+    for _key in ("HOPSWORKS_API_KEY", "HOPSWORKS_PROJECT_NAME", "AQICN_TOKEN"):
+        if _key in st.secrets:
+            os.environ.setdefault(_key, str(st.secrets[_key]))
+except Exception:
+    pass  # no secrets.toml configured - fall back to the live API path
+
 from config import (
     CITY_NAME,
     FORECAST_HORIZONS,
@@ -41,10 +53,13 @@ from config import (
 from training_pipeline.predict import (
     MODEL_DIR,
     build_live_frame,
+    build_frame_from_store,
     forecast_now,
     load_bundle,
+    load_bundle_from_registry,
 )
 from training_pipeline.explain import load_saved
+from feature_pipeline.store import hopsworks_available
 
 st.set_page_config(
     page_title=f"{CITY_NAME} AQI Forecast",
@@ -57,14 +72,38 @@ st.set_page_config(
 # cached data / model access
 # --------------------------------------------------------------------------
 
-@st.cache_data(ttl=3600, show_spinner="Fetching live air quality and weather forecast...")
-def load_live_frame(hour_key: str) -> pd.DataFrame:
-    """hour_key busts the cache when the clock rolls into a new hour."""
-    return build_live_frame()
+@st.cache_data(ttl=3600, show_spinner="Loading air quality data...")
+def load_frame(hour_key: str):
+    """
+    Feature store first, live API second.
+
+    Preferring Hopsworks is the point of the architecture: those rows were
+    engineered once by the hourly pipeline and are exactly what the models were
+    trained on. The live path recomputes the same features from the same
+    upstream APIs, so it is a genuine fallback rather than a different product -
+    it just means the dashboard keeps working when the store is unreachable, or
+    where the SDK cannot be installed at all (Streamlit Cloud currently
+    provisions Python 3.14, which confluent-kafka does not build for).
+
+    hour_key busts the cache when the clock rolls into a new hour.
+    """
+    df = build_frame_from_store()
+    if not df.empty:
+        return df, "hopsworks"
+    return build_live_frame(), "live-api"
 
 
 @st.cache_resource
 def get_bundle(horizon: int):
+    """
+    Cached so models deserialise once per process, never per page view.
+
+    Tries the Hopsworks model registry first and falls back to the copy
+    committed in the repo, which is also what the daily training workflow keeps
+    refreshed.
+    """
+    if hopsworks_available():
+        return load_bundle_from_registry(horizon)
     return load_bundle(horizon)
 
 
@@ -119,9 +158,9 @@ def main():
     )
 
     try:
-        frame = load_live_frame(current_hour_key())
+        frame, source = load_frame(current_hour_key())
     except Exception as e:
-        st.error(f"Could not fetch live data: {e}")
+        st.error(f"Could not load data: {e}")
         st.stop()
 
     if frame.empty:
@@ -307,8 +346,13 @@ def main():
         for (label, col), c in zip(weather.items(), wc):
             c.metric(label, f"{last[col]:.1f}" if pd.notna(last.get(col)) else "—")
 
+    source_label = {
+        "hopsworks": "Hopsworks feature store (engineered by the hourly pipeline)",
+        "live-api": "live Open-Meteo APIs (feature store unavailable)",
+    }.get(source, source)
+
     st.caption(
-        f"Data: Open-Meteo CAMS air quality + Open-Meteo weather forecast · "
+        f"Source: {source_label} · Open-Meteo CAMS air quality + weather forecast · "
         f"Latest observation {obs_time:%Y-%m-%d %H:%M} (Asia/Karachi) · "
         f"Page rendered {now_local_naive():%H:%M} PKT"
     )

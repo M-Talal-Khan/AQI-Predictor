@@ -366,13 +366,42 @@ firing. The SHAP panel is the interesting part: among the top features for the
 *forecast* weather valid at the target hour. That is the §2.2 design showing up
 in the deployed model's own attributions, independent of the §2.3 ablation.
 
-### A deployment note
+### Serving path
 
-The deployed app runs **without TensorFlow**. Streamlit Cloud provisions Python
-3.14, TensorFlow publishes no wheels for it, and the interpreter is fixed when
-an app is created — so no version setting could resolve it. Rather than pin the
-platform, the requirements were split: `requirements.txt` carries only what the
-dashboard needs, and `requirements-pipeline.txt` carries the training stack.
+The dashboard reads from the **Hopsworks feature store** when the SDK is
+available, and from the live Open-Meteo APIs when it is not:
+
+| | Feature-store path | Live-API path |
+|---|---|---|
+| Features | Read as stored — engineered once by the hourly pipeline | Recomputed by the same `build_features()` |
+| Models | Hopsworks **model registry**, cached with `@st.cache_resource` | Copies committed in the repo |
+| Requires | `hopsworks` importable + credentials | Nothing |
+
+Preferring the store is the point of the architecture: those rows carry exactly
+the `fc{H}_*` values that were valid when the pipeline ran, so serving cannot
+drift from training. The live path recomputes the same features from the same
+upstream APIs, so it is a genuine fallback rather than a second product.
+
+Both were verified end to end. Against the real project the dashboard reports
+`Source: Hopsworks feature store`, loading models from the registry; with the
+SDK absent it reports `Source: live Open-Meteo APIs` — both with zero
+exceptions.
+
+### Two dependency constraints worth recording
+
+**`streamlit` is capped below 1.61.** From that release Streamlit requires
+`protobuf>=5.26.1`, while `hopsworks` pins `protobuf<5.0.0` in every published
+version. Uncapped, the dashboard could never talk to the feature store at all.
+
+**The deployed instance runs without TensorFlow, and currently on the live-API
+path.** Streamlit Cloud provisions Python 3.14. TensorFlow publishes no wheels
+for it, and `hopsworks` cannot install either because `confluent-kafka` has no
+cp314 wheels. The interpreter is fixed when an app is created and cannot be
+changed afterwards. Both dependencies are therefore marker-gated to
+`python_version < "3.13"`, so the build succeeds on 3.14 and silently uses the
+fallbacks; deploying a new app on Python 3.11 switches it to the feature-store
+path with no code change. `requirements.txt` covers the dashboard only, while
+`requirements-pipeline.txt` carries the training stack.
 
 This works because `predict.load_bundle` falls back to the best non-TensorFlow
 model saved beside each Keras model. In the deployment all three horizons are
