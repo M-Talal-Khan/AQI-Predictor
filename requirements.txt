@@ -11,7 +11,13 @@
 tensorflow==2.18.1
 protobuf>=4.25.4,<5.0.0
 
-hopsworks>=4.0,<6.0
+# The [python] extra is REQUIRED, not optional. Plain `hopsworks` installs the
+# read path only: reads go over Arrow Flight, but feature-group WRITES go
+# through Kafka, and hsfs gates that path on HAS_CONFLUENT_KAFKA. confluent-kafka
+# ships solely in this extra, so without it fg.insert() raises ModuleNotFoundError
+# while reads keep working - which looks like "the pipeline runs fine but the
+# feature store never advances". Also pulls pyarrow/fastavro/httpx.
+hopsworks[python]>=4.0,<6.0
 
 requests>=2.31
 pandas>=2.0,<2.4
