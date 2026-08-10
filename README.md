@@ -4,6 +4,10 @@ Serverless end-to-end pipeline forecasting Lahore's Air Quality Index
 **24h / 48h / 72h ahead**, with a Hopsworks feature store + model registry,
 GitHub Actions scheduling, and a Streamlit dashboard.
 
+### ▶ Live dashboard: https://aqi-predictor-gysxgouemt7ar72ptwcema.streamlit.app
+
+![Dashboard](docs/screenshots/dashboard.png)
+
 | Horizon | Model | R² | RMSE | MAE | vs best naive baseline |
 |---|---|---|---|---|---|
 | +24h | XGBoost | **0.833** | 21.75 | 15.81 | +31.1% RMSE |

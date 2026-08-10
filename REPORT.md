@@ -347,11 +347,40 @@ Automation: `feature_pipeline.yml` hourly, `training_pipeline.yml` daily,
 
 ## 7. Dashboard
 
+**Live:** https://aqi-predictor-gysxgouemt7ar72ptwcema.streamlit.app
+
 `webapp/app.py` provides: current AQI with EPA category colouring, the three
 forecast horizons, a hazard alert banner with health guidance, a forecast chart
 against the hazard threshold, a 7/14/30-day trend with summary statistics,
 model performance on held-out data, SHAP feature importance (forecast-weather
 features highlighted in red), and current pollutant/weather readings.
 
-*Screenshots of the deployed dashboard to be added once Streamlit Cloud
-deployment is complete.*
+![Deployed dashboard](docs/screenshots/dashboard.png)
+
+Captured from the deployed app. Lahore was at AQI 212 ("Very Unhealthy") with
+all three horizons forecast above the hazard threshold, so the alert banner is
+firing. The SHAP panel is the interesting part: among the top features for the
++24h model, the red bars — `fc24_wind_speed_10m_w24_mean`,
+`fc24_boundary_layer_height_w24_min`, `fc24_precipitation_w24_sum`,
+`fc24_relative_humidity_2m_w24_mean`, `fc24_wind_mean_lead` — are all
+*forecast* weather valid at the target hour. That is the §2.2 design showing up
+in the deployed model's own attributions, independent of the §2.3 ablation.
+
+### A deployment note
+
+The deployed app runs **without TensorFlow**. Streamlit Cloud provisions Python
+3.14, TensorFlow publishes no wheels for it, and the interpreter is fixed when
+an app is created — so no version setting could resolve it. Rather than pin the
+platform, the requirements were split: `requirements.txt` carries only what the
+dashboard needs, and `requirements-pipeline.txt` carries the training stack.
+
+This works because `predict.load_bundle` falls back to the best non-TensorFlow
+model saved beside each Keras model. In the deployment all three horizons are
+therefore served by XGBoost rather than the MLPs, which costs accuracy at the
+long horizons (72h: 0.712 → 0.669) but stays above the 0.60 floor and keeps the
+app deployable on a platform that cannot run TensorFlow at all. The Keras models
+remain the registered artifacts in the Hopsworks model registry, and the
+training pipeline still selects on merit. Verified in an environment matching
+the deployment (pandas 3.0.5, numpy 2.5.2, scikit-learn 1.9, no TensorFlow, no
+Hopsworks): the app renders with zero exceptions and logs the fallback for the
+48h and 72h horizons.
