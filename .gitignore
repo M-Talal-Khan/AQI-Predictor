@@ -1,0 +1,22 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+.DS_Store
+
+# Local parquet mirror of the feature store (~8 MB). Derived data - regenerate
+# with `python feature_pipeline/backfill.py`, or read it from Hopsworks.
+data/
+
+# Scratch notes / briefs kept alongside the project, not part of it
+*_PROMPT.md
+notes/
+scratch/
+
+# Model artifacts ARE committed on purpose: the Streamlit deployment loads them
+# straight from the repo, and the daily training workflow commits refreshed
+# ones. Total is ~3.5 MB. Only the scratch upload dirs are excluded.
+models/_upload_*/

@@ -1,0 +1,36 @@
+name: Hourly feature pipeline
+
+on:
+  schedule:
+    - cron: "15 * * * *"  # :15 past each hour - CAMS publishes a few minutes
+                          # after the hour, so :00 would often fetch a stale hour
+  workflow_dispatch: {}
+
+# A slow run must never overlap the next hour's run and double-write.
+concurrency:
+  group: feature-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-feature-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 3.11, not 3.12+: TensorFlow is pinned to 2.18 for protobuf
+          # compatibility with hopsworks (see requirements.txt).
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run feature pipeline
+        env:
+          AQICN_TOKEN: ${{ secrets.AQICN_TOKEN }}
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
+        run: python feature_pipeline/run_feature_pipeline.py

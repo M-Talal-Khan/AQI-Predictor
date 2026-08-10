@@ -1,0 +1,42 @@
+name: One-off historical backfill
+
+# Seeds the Hopsworks feature store with the full ~4 years of hourly history.
+#
+# This runs in Actions rather than locally because the hopsworks SDK cannot be
+# pip-installed on Windows: it depends on pyjks -> twofish, which ships
+# source-only and needs MSVC C++ build tools. On ubuntu-latest it installs
+# cleanly. Run this ONCE (Actions tab -> this workflow -> Run workflow) before
+# relying on the daily training job.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD). CAMS archive begins 2022-09-01."
+        required: false
+        default: "2022-09-01"
+
+concurrency:
+  group: backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run backfill
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
+        run: python feature_pipeline/backfill.py --start "${{ inputs.start_date }}"

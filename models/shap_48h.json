@@ -1,0 +1,37 @@
+{
+  "method": "shap",
+  "features": [
+    "fc48_precip_total",
+    "fc48_wind_speed_10m_w24_mean",
+    "aqi_change_rate_3h",
+    "aqi_vs_24h_mean",
+    "fc48_blh_min_lead",
+    "fc48_temperature_2m_delta",
+    "hour_sin",
+    "fc48_boundary_layer_height_w24_min",
+    "fc48_wind_mean_lead",
+    "aqi_rolling_std_3h",
+    "aqi_lag_24h_same_hour",
+    "precip_sum_24h",
+    "aqi_lag_12h",
+    "aqi_lag_48h",
+    "fc48_precipitation_delta"
+  ],
+  "importance": [
+    6.963933050282833,
+    2.1124668224546483,
+    1.42530250835326,
+    1.2051440994193192,
+    1.1555913177561759,
+    1.1242007087707675,
+    1.0316878405967043,
+    0.7783364160326894,
+    0.7016005224020649,
+    0.636951489002308,
+    0.6297265202605985,
+    0.5197732818890494,
+    0.45455351600451294,
+    0.3453580608969899,
+    0.33471707390839806
+  ]
+}

@@ -1,0 +1,56 @@
+name: Daily training pipeline
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 03:00 UTC = 08:00 Asia/Karachi
+  workflow_dispatch: {}
+
+concurrency:
+  group: training-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-training-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      # needed to commit refreshed model artifacts back to the repo
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Train and register models
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
+        run: python training_pipeline/train.py
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: models
+          path: models/
+          retention-days: 30
+
+      # The Streamlit deployment reads models straight from the repo, so the
+      # daily run commits refreshed artifacts. This keeps the dashboard current
+      # without giving Streamlit Cloud credentials to the model registry.
+      - name: Commit refreshed models
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f models/
+          if git diff --staged --quiet; then
+            echo "No model changes to commit."
+          else
+            git commit -m "chore: refresh trained models [skip ci]"
+            git push
+          fi
