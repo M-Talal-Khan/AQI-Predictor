@@ -1,4 +1,12 @@
-# Target runtime: Python 3.11 (GitHub Actions + Streamlit Community Cloud).
+# REQUIRES PYTHON 3.9-3.12 (3.11 is what CI and Streamlit Cloud use).
+# On Python 3.13+ this file cannot be installed at all: tensorflow is pinned to
+# 2.18.1 below, which only publishes cp39-cp312 wheels, and pip reports the
+# unhelpful "No matching distribution found for tensorflow==2.18.1" rather than
+# naming the Python version as the cause. If you hit that, check your
+# interpreter version first.
+#
+# Everything except the TF MLP works fine on 3.13 - drop the tensorflow and
+# protobuf pins and the tree models still train.
 #
 # TENSORFLOW PIN - READ BEFORE CHANGING
 # hopsworks pins protobuf<5.0.0 (every published version does, up to 5.0.4).

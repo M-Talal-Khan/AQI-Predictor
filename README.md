@@ -62,6 +62,11 @@ See [REPORT.md §1](REPORT.md) for the verification.
 
 ## Setup
 
+**Python 3.9–3.12 required** (3.11 recommended). TensorFlow is pinned to 2.18.1
+for `protobuf` compatibility with `hopsworks`, and that release has no wheels
+for Python 3.13+ — pip will report `No matching distribution found for
+tensorflow==2.18.1` without mentioning your interpreter version.
+
 ```bash
 pip install -r requirements.txt
 cp .env.example .env      # add HOPSWORKS_API_KEY + HOPSWORKS_PROJECT_NAME
