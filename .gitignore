@@ -16,6 +16,9 @@ data/
 notes/
 scratch/
 
+# Local coding-assistant state - environment-specific, never part of the project
+.claude/
+
 # Model artifacts ARE committed on purpose: the Streamlit deployment loads them
 # straight from the repo, and the daily training workflow commits refreshed
 # ones. Total is ~3.5 MB. Only the scratch upload dirs are excluded.
