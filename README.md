@@ -62,13 +62,25 @@ See [REPORT.md §1](REPORT.md) for the verification.
 
 ## Setup
 
-**Python 3.9–3.12 required** (3.11 recommended). TensorFlow is pinned to 2.18.1
-for `protobuf` compatibility with `hopsworks`, and that release has no wheels
-for Python 3.13+ — pip will report `No matching distribution found for
-tensorflow==2.18.1` without mentioning your interpreter version.
+There are two requirement sets:
+
+| File | For | Python |
+|---|---|---|
+| `requirements.txt` | the Streamlit dashboard only — light, no TF/Hopsworks | any 3.9+ |
+| `requirements-pipeline.txt` | feature pipeline, training, backfill | **3.9–3.12** |
+
+The split exists so the deployed dashboard isn't forced to install TensorFlow
+and the Hopsworks SDK just to draw charts. It loads models from the repo and
+live data from keyless APIs; where a Keras model can't be loaded it falls back
+to the non-TF model saved alongside it.
+
+The pipeline set needs Python **3.9–3.12**: TensorFlow is pinned to 2.18.1 for
+`protobuf` compatibility with `hopsworks`, and that release ships no wheels for
+3.13+ — pip reports `No matching distribution found for tensorflow==2.18.1`
+without mentioning your interpreter version.
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-pipeline.txt   # full stack
 cp .env.example .env      # add HOPSWORKS_API_KEY + HOPSWORKS_PROJECT_NAME
 ```
 
@@ -113,13 +125,17 @@ permanent hole in the lag features.
 1. Push this repo to GitHub.
 2. Go to https://share.streamlit.io → **New app**, select the repo, branch
    `main`, main file `webapp/app.py`.
-3. Under **Advanced settings**, set **Python version 3.11**. This matters:
-   `requirements.txt` pins `tensorflow==2.18.1` (see below) and TF 2.18 has no
-   wheels for Python 3.13, so leaving the default can fail the build.
-4. No secrets are required — the dashboard reads models from the repo and
-   fetches live data from keyless APIs. Add `HOPSWORKS_API_KEY` /
-   `HOPSWORKS_PROJECT_NAME` under **Secrets** only if you want it reading the
-   feature store instead of the live API.
+3. No secrets are required — the dashboard reads models from the repo and
+   fetches live data from keyless APIs.
+4. No Python version needs choosing. `requirements.txt` carries no TensorFlow
+   and no upper caps on pandas/numpy, so it resolves on whatever interpreter
+   Streamlit provisions (currently 3.14). Verified end-to-end on pandas 3.0.5 /
+   numpy 2.5.2 / scikit-learn 1.9 with neither TensorFlow nor Hopsworks
+   installed: the app runs and serves the non-TF fallback models.
+
+Note that Streamlit Cloud fixes the Python version **when the app is created** —
+it cannot be changed afterwards from the settings page. That is why this project
+avoids depending on a particular version rather than requiring one.
 
 The daily training workflow commits refreshed models, and Streamlit Cloud
 redeploys on push, so the deployed app keeps up to date on its own.

@@ -1,0 +1,30 @@
+# FULL PIPELINE stack - feature pipeline, training, backfill (GitHub Actions).
+# The Streamlit deployment does NOT use this file; it installs the much lighter
+# requirements.txt. Keeping them separate means the dashboard is not forced to
+# install TensorFlow and the Hopsworks SDK just to render a chart.
+#
+# REQUIRES PYTHON 3.9-3.12 (CI pins 3.11). TensorFlow 2.18.1 publishes only
+# cp39-cp312 wheels, so this file cannot be installed on 3.13+.
+
+-r requirements.txt
+
+# --- TensorFlow pin: do not bump without re-checking protobuf ---
+# hopsworks pins protobuf<5.0.0 in every published version, while TensorFlow
+# >=2.19 requires protobuf>=6.31.1 - those ranges do not intersect, so an
+# unpinned TF yields either a resolver failure or a silently broken TensorFlow.
+# TF 2.18.x allows protobuf>=3.20.3,<6.0.0dev, overlapping hopsworks at 4.25.x.
+tensorflow==2.18.1
+protobuf>=4.25.4,<5.0.0
+
+# --- The [python] extra is REQUIRED, not optional ---
+# Reads go over Arrow Flight (pyarrow), but feature-group WRITES go through
+# Kafka, and hsfs gates that path on HAS_CONFLUENT_KAFKA. confluent-kafka ships
+# only in this extra. Without it fg.insert() raises ModuleNotFoundError while
+# reads keep working - which presents as "the pipeline runs green but the
+# feature store never advances".
+hopsworks[python]>=4.0,<6.0
+
+shap>=0.44           # feature importances, computed at training time
+pyarrow>=17.0        # local parquet mirror in feature_pipeline/store.py
+matplotlib>=3.7      # EDA notebook
+seaborn>=0.13        # EDA notebook
