@@ -361,12 +361,11 @@ purely cosmetic, no data or model logic lives there).
 
 ![Deployed dashboard](docs/screenshots/dashboard.png)
 
-Captured from the deployed app. Lahore was at AQI 170 ("Unhealthy"), with the
-three horizons forecast at 149, 163 and 157. Note that the alert names only
-**+48h and +72h**: the +24h forecast of 149 sits just under the threshold of
-151 and is rendered in the "Unhealthy for Sensitive Groups" colour, so the
-banner is evaluating each horizon separately rather than raising a blanket
-warning.
+Captured from the deployed app. Lahore was at AQI 166 ("Unhealthy"), with the
+three horizons forecast at 141, 156 and 160. Note that the alert names only
+**+48h and +72h**: the +24h forecast of 141 sits under the threshold of 151 and
+is rendered in the "Unhealthy for Sensitive Groups" colour, so the banner is
+evaluating each horizon separately rather than raising a blanket warning.
 
 The SHAP panel is the more interesting part: among the top features for the
 +24h model, the pink bars — `fc24_wind_speed_10m_w24_mean`,
@@ -374,6 +373,11 @@ The SHAP panel is the more interesting part: among the top features for the
 `fc24_relative_humidity_2m_w24_mean`, `fc24_wind_mean_lead` — are all
 *forecast* weather valid at the target hour. That is the §2.2 design showing up
 in the deployed model's own attributions, independent of the §2.3 ablation.
+
+The screenshot cannot show it, but the background is a live canvas particle
+field (`webapp/theme.py`) that drifts on its own and scatters away from the
+cursor — purely cosmetic, verified separately to have zero effect on any
+number the app reports.
 
 ### Serving path
 
