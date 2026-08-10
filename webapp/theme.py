@@ -27,8 +27,6 @@ import streamlit.components.v1 as components
 
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
-
 :root {
   /* Dark, mostly-opaque glass - readability over transparency. An earlier,
      lighter/more-see-through fill let bright bits of the animated sky bleed
@@ -75,12 +73,18 @@ CSS = """
 
 html, body, p, li, label, [data-testid="stMarkdownContainer"] {
   color: var(--text);
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
 }
 .stCaption, [data-testid="stCaptionContainer"] { color: var(--text-dim) !important; }
 
+/* System font stacks only - no external @import. A prior version pulled
+   Space Grotesk/Inter from Google Fonts via @import, which is render-blocking:
+   a viewer with any latency or failure reaching fonts.googleapis.com (flaky
+   network, corporate/regional blocking, an ad/privacy blocker) could stall the
+   whole page's first paint behind it. The distinct look comes from weight and
+   letter-spacing here, not a particular typeface. */
 h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-  font-family: 'Space Grotesk', 'Inter', sans-serif !important;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif !important;
   letter-spacing: -0.01em;
 }
 h1 {
@@ -142,7 +146,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:hover {
 }
 .glass-tile:hover { transform: translateY(-4px) scale(1.015); box-shadow: 0 12px 30px rgba(0,0,0,.45); }
 .glass-tile .g-label { font-size: .8rem; font-weight: 700; opacity: .9; letter-spacing: .04em; text-transform: uppercase; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
-.glass-tile .g-value { font-family: 'Space Grotesk', sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1.05; margin: 2px 0; text-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.glass-tile .g-value { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1.05; margin: 2px 0; text-shadow: 0 2px 6px rgba(0,0,0,.35); }
 .glass-tile .g-cat { font-size: .84rem; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .glass-tile .g-sub { font-size: .74rem; opacity: .9; margin-top: 2px; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
 
@@ -365,7 +369,7 @@ def style_fig(fig):
             # data/gridlines regardless of what the animated sky is doing behind
             # the glass panel the chart sits in.
             plot_bgcolor="rgba(8,5,16,0.45)",
-            font=dict(color="#f3f2fa", family="Inter, sans-serif", size=13),
+            font=dict(color="#f3f2fa", family="-apple-system, Segoe UI, Roboto, sans-serif", size=13),
             xaxis=dict(gridcolor="rgba(255,255,255,0.14)", zerolinecolor="rgba(255,255,255,0.16)",
                       tickfont=dict(color="#d8d4e8")),
             yaxis=dict(gridcolor="rgba(255,255,255,0.14)", zerolinecolor="rgba(255,255,255,0.16)",

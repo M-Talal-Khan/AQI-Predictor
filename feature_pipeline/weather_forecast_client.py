@@ -54,17 +54,24 @@ class WeatherClientError(RuntimeError):
     pass
 
 
-def _get_json(url: str, params: dict, retries: int = 3, timeout: int = 60) -> dict:
+def _get_json(url: str, params: dict, retries: int = 3, timeout: int = 20) -> dict:
     """
     Open-Meteo is free but rate-limited; a burst of archive calls can get a 429.
     Back off and retry rather than losing a long backfill to one transient error.
+
+    timeout/backoff are modest (worst case ~70s across all retries), not the
+    many-minutes ceiling a longer per-attempt timeout here would allow. This
+    function serves both the batch pipeline and the live dashboard - on the
+    dashboard, build_live_frame calls this AND the AQ client sequentially, so a
+    generous per-call ceiling compounds into minutes of a blank, stuck-looking
+    page rather than a prompt, visible error.
     """
     last_err = None
     for attempt in range(retries):
         try:
             resp = requests.get(url, params=params, timeout=timeout)
             if resp.status_code == 429:
-                wait = 10 * (attempt + 1)
+                wait = 6 * (attempt + 1)
                 print(f"    rate-limited by Open-Meteo, waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -73,7 +80,7 @@ def _get_json(url: str, params: dict, retries: int = 3, timeout: int = 60) -> di
         except requests.RequestException as e:
             last_err = e
             if attempt < retries - 1:
-                time.sleep(5 * (attempt + 1))
+                time.sleep(3 * (attempt + 1))
     raise WeatherClientError(f"Open-Meteo request failed after {retries} tries: {last_err}")
 
 

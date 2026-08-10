@@ -1,0 +1,21 @@
+# Explicit dark theme.
+#
+# Without this file, Streamlit defaults to its light theme's internal color
+# variables for everything IT renders natively - the dataframe grid (a canvas,
+# not real DOM text, so no CSS override in theme.py can reach it), the
+# selectbox, sliders, tooltips, buttons. webapp/theme.py CSS-overrides the
+# elements it explicitly targets, but that only ever covers what was tested
+# against one specific Streamlit version's DOM structure (data-testid attributes
+# have already changed under us more than once between local dev and whatever
+# Streamlit Cloud provisions). Setting the theme HERE means Streamlit itself
+# hands out correct dark colors everywhere, natively, regardless of DOM/testid
+# differences across versions - CSS then only has to add decoration on top of
+# an already-readable base, not invent readability that Streamlit's own
+# components never had.
+[theme]
+base = "dark"
+primaryColor = "#7dd3fc"
+backgroundColor = "#0d0716"
+secondaryBackgroundColor = "#1a1030"
+textColor = "#f3f2fa"
+font = "sans serif"

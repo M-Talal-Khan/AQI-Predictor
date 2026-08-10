@@ -63,13 +63,22 @@ class AQClientError(RuntimeError):
     pass
 
 
-def _get_json(params: dict, retries: int = 3, timeout: int = 90) -> dict:
+def _get_json(params: dict, retries: int = 3, timeout: int = 20) -> dict:
+    """
+    timeout/backoff are deliberately modest (worst case ~70s across all
+    retries), not the many-minutes ceiling a longer timeout here would allow.
+    This function serves both the batch pipeline (where a slow-but-eventually-
+    successful call is fine) and the live dashboard (where a stuck upstream
+    must surface as a visible error within seconds, not leave the page hung on
+    a blank loading state for minutes - which is indistinguishable from broken
+    to a visitor, and was reachable if Open-Meteo has any sustained slowness).
+    """
     last_err = None
     for attempt in range(retries):
         try:
             resp = requests.get(OPENMETEO_AQ_URL, params=params, timeout=timeout)
             if resp.status_code == 429:
-                wait = 10 * (attempt + 1)
+                wait = 6 * (attempt + 1)
                 print(f"    rate-limited by Open-Meteo AQ, waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -78,7 +87,7 @@ def _get_json(params: dict, retries: int = 3, timeout: int = 90) -> dict:
         except requests.RequestException as e:
             last_err = e
             if attempt < retries - 1:
-                time.sleep(5 * (attempt + 1))
+                time.sleep(3 * (attempt + 1))
     raise AQClientError(f"Open-Meteo AQ request failed after {retries} tries: {last_err}")
 
 
