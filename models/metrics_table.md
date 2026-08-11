@@ -1,26 +1,26 @@
 | Horizon  | Model                        |     RMSE |      MAE |      R2 |
 |----------|------------------------------|----------|----------|---------|
-| 24h      | xgboost *BEST*               |    21.75 |    15.81 |   0.833 |
-| 24h      | tensorflow_mlp               |    22.14 |    16.05 |   0.827 |
-| 24h      | lightgbm                     |    22.60 |    16.82 |   0.820 |
-| 24h      | random_forest                |    23.48 |    17.58 |   0.806 |
-| 24h      | ridge                        |    23.79 |    17.16 |   0.800 |
-| 24h      | baseline_persistence         |    31.55 |    21.34 |   0.649 |
-| 24h      | baseline_same_hour_yesterday |    38.97 |    27.34 |   0.465 |
+| 24h      | tensorflow_mlp *BEST*        |    21.75 |    15.67 |   0.833 |
+| 24h      | lightgbm                     |    22.27 |    16.52 |   0.825 |
+| 24h      | xgboost                      |    22.61 |    16.51 |   0.820 |
+| 24h      | random_forest                |    23.55 |    17.61 |   0.804 |
+| 24h      | ridge                        |    23.82 |    17.18 |   0.800 |
+| 24h      | baseline_persistence         |    31.58 |    21.34 |   0.648 |
+| 24h      | baseline_same_hour_yesterday |    39.12 |    27.47 |   0.460 |
 |----------|------------------------------|----------|----------|---------|
-| 48h      | tensorflow_mlp *BEST*        |    29.91 |    22.75 |   0.684 |
-| 48h      | xgboost                      |    30.72 |    22.96 |   0.667 |
-| 48h      | lightgbm                     |    30.78 |    22.73 |   0.665 |
-| 48h      | ridge                        |    31.00 |    23.00 |   0.661 |
-| 48h      | random_forest                |    31.36 |    23.02 |   0.653 |
-| 48h      | baseline_persistence         |    39.18 |    27.56 |   0.458 |
-| 48h      | baseline_same_hour_yesterday |    41.89 |    30.65 |   0.381 |
+| 48h      | tensorflow_mlp *BEST*        |    27.82 |    20.82 |   0.727 |
+| 48h      | xgboost                      |    30.91 |    23.09 |   0.663 |
+| 48h      | ridge                        |    31.08 |    23.07 |   0.660 |
+| 48h      | random_forest                |    31.31 |    23.06 |   0.655 |
+| 48h      | lightgbm                     |    31.78 |    23.68 |   0.644 |
+| 48h      | baseline_persistence         |    39.27 |    27.60 |   0.457 |
+| 48h      | baseline_same_hour_yesterday |    41.94 |    30.68 |   0.380 |
 |----------|------------------------------|----------|----------|---------|
-| 72h      | tensorflow_mlp *BEST*        |    28.59 |    21.28 |   0.712 |
-| 72h      | xgboost                      |    30.66 |    22.90 |   0.669 |
-| 72h      | lightgbm                     |    31.31 |    23.18 |   0.654 |
-| 72h      | random_forest                |    31.49 |    23.21 |   0.650 |
-| 72h      | ridge                        |    32.86 |    24.54 |   0.619 |
-| 72h      | baseline_persistence         |    41.96 |    30.72 |   0.380 |
-| 72h      | baseline_same_hour_yesterday |    44.66 |    33.02 |   0.297 |
+| 72h      | tensorflow_mlp *BEST*        |    29.09 |    22.03 |   0.702 |
+| 72h      | xgboost                      |    30.77 |    23.10 |   0.667 |
+| 72h      | lightgbm                     |    31.38 |    23.26 |   0.654 |
+| 72h      | random_forest                |    31.68 |    23.41 |   0.647 |
+| 72h      | ridge                        |    32.90 |    24.59 |   0.619 |
+| 72h      | baseline_persistence         |    41.99 |    30.73 |   0.380 |
+| 72h      | baseline_same_hour_yesterday |    44.67 |    33.01 |   0.298 |
 |----------|------------------------------|----------|----------|---------|
