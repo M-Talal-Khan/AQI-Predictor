@@ -1,30 +1,30 @@
 {
   "24h": {
     "best_model": "lightgbm",
-    "rmse": 22.156375226941226,
-    "mae": 16.389241484618907,
-    "r2": 0.8265153273896051,
+    "rmse": 22.11568951456591,
+    "mae": 16.342112649263075,
+    "r2": 0.8268753383382371,
     "rmse_lift_vs_best_baseline_pct": 29.3
   },
   "48h": {
     "best_model": "tensorflow_mlp",
-    "rmse": 27.521872513726198,
-    "mae": 20.935057045812666,
-    "r2": 0.732233161756962,
-    "rmse_lift_vs_best_baseline_pct": 29.5
+    "rmse": 28.428344115102608,
+    "mae": 21.29398491378992,
+    "r2": 0.7141202256134989,
+    "rmse_lift_vs_best_baseline_pct": 27.2
   },
   "72h": {
     "best_model": "tensorflow_mlp",
-    "rmse": 29.710249902679713,
-    "mae": 21.861871720966136,
-    "r2": 0.688302576389181,
-    "rmse_lift_vs_best_baseline_pct": 29.0
+    "rmse": 29.821663616552904,
+    "mae": 22.68131428243416,
+    "r2": 0.6859025502347267,
+    "rmse_lift_vs_best_baseline_pct": 28.8
   },
   "_overall": {
-    "mean_r2": 0.7490170218452494,
-    "weakest_r2": 0.688302576389181,
+    "mean_r2": 0.7422993713954876,
+    "weakest_r2": 0.6859025502347267,
     "target_mean_r2": 0.7,
     "target_weakest_r2": 0.6,
-    "trained_at": "2026-08-19T03:53:20"
+    "trained_at": "2026-08-20T03:53:50"
   }
 }
