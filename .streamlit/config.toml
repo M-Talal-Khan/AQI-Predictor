@@ -1,21 +1,20 @@
-# Explicit dark theme.
+# Explicit theme, matching webapp/theme.py's light "bento card" palette.
 #
-# Without this file, Streamlit defaults to its light theme's internal color
-# variables for everything IT renders natively - the dataframe grid (a canvas,
-# not real DOM text, so no CSS override in theme.py can reach it), the
-# selectbox, sliders, tooltips, buttons. webapp/theme.py CSS-overrides the
-# elements it explicitly targets, but that only ever covers what was tested
-# against one specific Streamlit version's DOM structure (data-testid attributes
-# have already changed under us more than once between local dev and whatever
-# Streamlit Cloud provisions). Setting the theme HERE means Streamlit itself
-# hands out correct dark colors everywhere, natively, regardless of DOM/testid
-# differences across versions - CSS then only has to add decoration on top of
-# an already-readable base, not invent readability that Streamlit's own
-# components never had.
+# Without this file, or with a stale/mismatched one, Streamlit still applies
+# its own theme colors to natively-rendered components (the dataframe grid -
+# a canvas, not real DOM text, so no CSS override in theme.py can reach it -
+# plus the selectbox, radio/segmented control internals, sliders, tooltips).
+# Those need to agree with the CSS theme or native components render with the
+# wrong-context colors: this file previously left over `base = "dark"` /
+# `textColor = "#f3f2fa"` from an earlier dark iteration of this dashboard,
+# which meant every native component still rendered pale, light-on-dark text
+# - on this theme's white/light backgrounds that text was nearly invisible
+# (confirmed on the day/window toggle: computed color #f3f2fa on a white pill).
+# Keep this in sync whenever webapp/theme.py's palette changes.
 [theme]
-base = "dark"
-primaryColor = "#7dd3fc"
-backgroundColor = "#0d0716"
-secondaryBackgroundColor = "#1a1030"
-textColor = "#f3f2fa"
+base = "light"
+primaryColor = "#0284c7"
+backgroundColor = "#edeceb"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0f172a"
 font = "sans serif"

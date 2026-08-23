@@ -1,346 +1,727 @@
 """
-Visual theme: glassmorphism panels floating over an animated night sky, with a
-lightweight particle field that scatters away from the cursor.
+Visual theme: a light "bento card" dashboard - frosted-glass panels on a flat
+neutral canvas, a sticky pill navbar, and a compact live-summary strip above
+the main content.
 
 Purely cosmetic. Nothing here touches data, features, or predictions - app.py
 still computes every number exactly as before, this module only restyles how
-it's presented. Every piece degrades independently and silently: if the
-background component fails to render (old browser, blocked iframe, whatever),
-the CSS still applies and the app is fully usable with a plain gradient behind
-it; if even the CSS injection fails, inject_theme() swallows the error rather
-than take the dashboard down over a styling problem.
+it's presented. inject_theme() never raises, so a styling problem can never
+take the dashboard down with it.
 
-WHY A COMPONENT, NOT JUST st.markdown
---------------------------------------
-st.markdown(unsafe_allow_html=True) sets innerHTML under the hood, and browsers
-never execute <script> tags inserted that way - true regardless of framework.
-CSS in a <style> tag DOES apply through that path, which is why the panel/tile
-styling below is plain st.markdown, but the animated canvas needs a real parsed
-HTML document to run its JS at all, so it goes through
-streamlit.components.v1.html (an actual iframe), and the CSS block below
-targets that iframe from the parent page to stretch it into a fixed full-screen
-backdrop rather than the small inline box components.html defaults to.
+No external font/icon requests: an earlier version of this theme pulled Inter
+from Google Fonts via a render-blocking `@import`, which risks stalling first
+paint for any visitor with latency or a failure reaching that host. System
+font stacks only.
 """
+from datetime import datetime
 import streamlit as st
-import streamlit.components.v1 as components
-
 
 CSS = """
 <style>
 :root {
-  /* Dark, mostly-opaque glass - readability over transparency. An earlier,
-     lighter/more-see-through fill let bright bits of the animated sky bleed
-     through inconsistently, dimming contrast under text wherever a star or
-     nebula happened to sit. This fill is dark enough on its own that legibility
-     no longer depends on what is animating behind it. */
-  --glass: rgba(16,10,28,0.62);
-  --glass-strong: rgba(16,10,28,0.80);
-  --glass-border: rgba(255,255,255,0.14);
-  --accent: #7dd3fc;
-  --accent2: #e9a6ff;
-  --text: #f3f2fa;
-  --text-dim: #b7b3cc;
+  --bg-canvas: #edeceb;
+  --card-bg: rgba(255, 255, 255, 0.94);
+  --card-border: rgba(255, 255, 255, 0.98);
+  --card-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.03);
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-dim: #64748b;
 }
 
-/* ---- sky backdrop on the real app surface ----
-   Black/purple night palette - no blue-navy base. The aurora blobs and the
-   base gradient are BOTH part of this element's own background (not a
-   separate positioned layer) so there is no stacking-context ambiguity to get
-   wrong: an element's own background is always painted, full stop, before any
-   question of z-index arises. The radial layers animate purely via
-   background-position, enough motion to read as a slowly drifting sky without
-   a second element. */
+html {
+  scroll-behavior: smooth !important;
+}
+
+/* Base canvas + a soft glowing perimeter vignette */
+html, body, [data-testid="stApp"] {
+  background-color: var(--bg-canvas) !important;
+  color: var(--text-main) !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  padding: 0;
+}
+
+/* Soft glowing perimeter vignette around the viewport edge */
+[data-testid="stAppViewContainer"]::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999999;
+  box-shadow: 
+    inset 0 0 60px 15px rgba(59, 130, 246, 0.42),
+    inset 0 0 140px 45px rgba(99, 102, 241, 0.22);
+}
+
 [data-testid="stAppViewContainer"] {
-  background-image:
-    radial-gradient(circle at 30% 25%, rgba(147,51,234,.28), transparent 42%),
-    radial-gradient(circle at 72% 38%, rgba(88,28,135,.30), transparent 46%),
-    radial-gradient(circle at 50% 82%, rgba(219,39,119,.14), transparent 46%),
-    radial-gradient(ellipse 90% 55% at 12% -8%, rgba(76,29,149,.40) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 55% at 88% 0%,   rgba(30,10,50,.45) 0%, transparent 60%),
-    linear-gradient(180deg, #050308 0%, #0d0716 40%, #170a28 75%, #1c0a30 100%) !important;
-  background-size: 160% 160%, 170% 170%, 150% 150%, 100% 100%, 100% 100%, 100% 100%;
-  background-repeat: no-repeat !important;
-  background-attachment: fixed !important;
-  animation: sky-drift 30s ease-in-out infinite alternate;
+  background-color: var(--bg-canvas) !important;
+  background-image: none !important;
 }
-@keyframes sky-drift {
-  0%   { background-position: 0% 0%,   100% 20%, 50% 100%, 0 0, 0 0, 0 0; }
-  50%  { background-position: 15% 10%, 80% 35%,  60% 85%,  0 0, 0 0, 0 0; }
-  100% { background-position: 5% 20%,  90% 10%,  40% 95%,  0 0, 0 0, 0 0; }
-}
-[data-testid="stHeader"] { background: transparent !important; box-shadow: none !important; }
-[data-testid="stAppViewContainer"] > .main { background: transparent !important; }
 
-html, body, p, li, label, [data-testid="stMarkdownContainer"] {
-  color: var(--text);
-  font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+[data-testid="stHeader"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  display: none !important;
 }
-.stCaption, [data-testid="stCaptionContainer"] { color: var(--text-dim) !important; }
 
-/* System font stacks only - no external @import. A prior version pulled
-   Space Grotesk/Inter from Google Fonts via @import, which is render-blocking:
-   a viewer with any latency or failure reaching fonts.googleapis.com (flaky
-   network, corporate/regional blocking, an ad/privacy blocker) could stall the
-   whole page's first paint behind it. The distinct look comes from weight and
-   letter-spacing here, not a particular typeface. */
-h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-  font-family: -apple-system, "Segoe UI", Roboto, sans-serif !important;
-  letter-spacing: -0.01em;
+[data-testid="stAppViewContainer"] > .main {
+  background: transparent !important;
+  padding-top: 1rem !important;
 }
-h1 {
-  background: linear-gradient(90deg, var(--accent), var(--accent2));
-  -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent; color: transparent !important;
+
+.block-container {
+  max-width: 1140px !important;
+  padding-top: 1.5rem !important;
+  padding-bottom: 5rem !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+}
+
+/* High Contrast Typography */
+h1, h2, h3, h4, h5, h6,
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
+  color: #0f172a !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+  scroll-margin-top: 90px !important;
+}
+
+/* p/li/label only - NOT span. An earlier version included span here,
+   which broke every custom-colored <span> in the injected HTML components
+   below (the live-dock horizon numbers, telemetry readings, and category
+   legend pills all set their own inline color intentionally) - a directly-
+   matching !important rule beats a plain inline style regardless of the
+   inline style'''s higher base specificity, so those custom colors were
+   silently overridden to this one dark slate value everywhere, including
+   white-on-dark category pills like "Hazardous", which became hard to read.
+   :not() would also work, but omitting span outright is simpler and nothing
+   here relies on a bare <span> getting this default. */
+p, li, label, .stMarkdown p {
+  color: #334155 !important;
+}
+
+.stCaption, [data-testid="stCaptionContainer"] {
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+/* Floating Frosted Glass Navbar */
+.dock-nav-outer {
+  display: flex;
+  justify-content: center;
+  position: sticky;
+  top: 14px;
+  z-index: 99999;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.dock-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.98);
+  border-radius: 9999px;
+  padding: 8px 18px 8px 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s ease;
+  max-width: 780px;
+  width: 100%;
+}
+
+.dock-nav:hover {
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.brand-icon {
+  width: 32px;
+  height: 32px;
+  background: #0d0d0d;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: #ffffff;
+}
+
+.brand-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #0d0d0d;
+  letter-spacing: -0.02em;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-link {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #4b5563;
+  text-decoration: none;
+  transition: color 0.18s ease;
+}
+
+.nav-link:hover {
+  color: #000000;
+}
+
+.nav-btn-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #0d0d0d;
+  color: #ffffff !important;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+}
+
+.nav-live-dot {
+  width: 7px;
+  height: 7px;
+  background-color: #22c55e;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px #22c55e;
+  animation: live-pulse 2s infinite;
+}
+
+@keyframes live-pulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+/* Hero Section */
+.hero-wrapper {
+  text-align: center;
+  padding: 1rem 1rem 1.8rem;
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+.hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #1f2937;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+  margin-bottom: 1.2rem;
+}
+
+.hero-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-size: 3.8rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.04em !important;
+  line-height: 1.06 !important;
+  color: #0a0a0a !important;
+  margin: 0 0 1.2rem 0 !important;
+}
+
+.hero-subtitle {
+  font-size: 1.15rem !important;
+  font-weight: 400 !important;
+  color: #475569 !important;
+  line-height: 1.6 !important;
+  max-width: 680px;
+  margin: 0 auto 1.5rem auto !important;
+}
+
+.hero-tags {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 2rem;
+}
+
+.tag-capsule {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+}
+
+/* Live AQI Dock */
+.aqi-dock-container {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 2.8rem auto;
+  width: 100%;
+}
+
+.aqi-dock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #121216;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 26px;
+  padding: 12px 18px;
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.22);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  max-width: 980px;
+  width: 100%;
+}
+
+.aqi-dock:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 30px 70px -12px rgba(0, 0, 0, 0.42);
+}
+
+.dock-widget {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #ffffff;
+  min-height: 72px;
+}
+
+.dock-widget-clock {
+  min-width: 130px;
+  text-align: left;
+}
+.dock-clock-time {
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: #ffffff;
+}
+.dock-clock-date {
+  font-size: 0.74rem;
+  color: #9ca3af;
+  margin-top: 3px;
+  font-weight: 600;
+}
+
+.dock-widget-aqi {
+  min-width: 165px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.dock-aqi-num {
+  font-size: 2.1rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.dock-aqi-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dock-aqi-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: inline-block;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.dock-aqi-label {
+  font-size: 0.68rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.dock-widget-weather {
+  min-width: 130px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.dock-weather-icon {
+  font-size: 1.7rem;
+}
+.dock-weather-info {
+  display: flex;
+  flex-direction: column;
+}
+.dock-weather-temp {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.1;
+}
+.dock-weather-sub {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.dock-widget-forecast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dock-horizon-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 11px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 58px;
+}
+.dock-h-name {
+  font-size: 0.68rem;
+  color: #9ca3af;
+  font-weight: 600;
+}
+.dock-h-val {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-top: 1px;
+}
+
+.dock-widget-telemetry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+}
+.dock-telem-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.dock-telem-lbl {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  font-weight: 600;
+}
+.dock-telem-val {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #e5e7eb;
+}
+
+/* Bento Card Styling */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  background: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.98) !important;
+  border-radius: 26px !important;
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.03) !important;
+  padding: 22px 26px !important;
+  margin-bottom: 2rem !important;
+}
+
+/* Modern Frosted Metric Tiles */
+.dock-bento-tile {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 20px 16px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(16px);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+}
+
+.dock-bento-tile:hover {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+}
+
+.dock-bento-tile .tile-label {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.9;
+  margin-bottom: 4px;
+}
+
+.dock-bento-tile .tile-val {
+  font-size: 2.8rem;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  margin: 4px 0;
+}
+
+.dock-bento-tile .tile-cat {
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.dock-bento-tile .tile-sub {
+  font-size: 0.76rem;
+  opacity: 0.85;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+@keyframes hazard-pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.8); }
+  50%      { box-shadow: 0 12px 38px rgba(239, 68, 68, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.8); }
+}
+
+.dock-bento-tile.tile-hazard {
+  animation: hazard-pulse 2.2s ease-in-out infinite;
+}
+
+/* Category Legend Pills */
+.dock-pill-row {
+  margin: 4px 0 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dock-category-pill {
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  display: inline-block;
+}
+
+/* Hazard Alert Card */
+.dock-alert-banner {
+  border-radius: 20px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 14px;
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+}
+
+.alert-danger {
+  background: linear-gradient(135deg, rgba(254, 226, 226, 0.95), rgba(254, 242, 242, 0.9));
+  border-left: 5px solid #ef4444;
+  color: #991b1b;
+}
+
+.alert-success {
+  background: linear-gradient(135deg, rgba(220, 252, 231, 0.95), rgba(240, 253, 244, 0.9));
+  border-left: 5px solid #22c55e;
+  color: #166534;
+}
+
+.alert-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.alert-body {
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.alert-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+/* Apple Segment Controls (Radio Buttons) */
+div[role="radiogroup"] {
+  background: #e2e8f0 !important;
+  padding: 4px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  gap: 4px !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+div[role="radiogroup"] label {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 999px !important;
+  padding: 6px 16px !important;
+  margin: 0 !important;
+  font-size: 0.84rem !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+div[role="radiogroup"] label:hover {
+  color: #0f172a !important;
+}
+
+div[role="radiogroup"] label[data-checked="true"],
+div[role="radiogroup"] label:has(input:checked) {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
   font-weight: 700 !important;
 }
 
-/* ---- background particle iframe -> fixed, full-viewport, click-through ----
-   Verified against the real DOM: components.v1.html renders as
-   <iframe data-testid="stIFrame"> inside a <div data-testid="stElementContainer">.
-   Both selectors are covered (container AND iframe itself, both !important)
-   so this survives whichever the current Streamlit version keys layout on.
-
-   z-index is 0, deliberately NOT negative. stAppViewContainer never becomes a
-   stacking context of its own (no position/transform/opacity on it), so a
-   negative z-index here would be compared at the ROOT stacking context - where
-   it loses to stAppViewContainer's own (fully opaque) background under the
-   ordinary CSS painting-order rules, hiding the whole layer behind it
-   completely. Non-negative + this being the first content injected in main()
-   (so it is earliest in DOM order) is what keeps it behind the later glass
-   panels without needing a negative value at all. */
-div[data-testid="stElementContainer"]:has(> iframe[data-testid="stIFrame"]) {
-  position: fixed !important; inset: 0 !important; z-index: 0 !important;
-  pointer-events: none !important; width: 100vw !important; height: 100vh !important;
-  max-width: none !important; overflow: hidden !important;
-}
-iframe[data-testid="stIFrame"] {
-  position: fixed !important; inset: 0 !important; z-index: 0 !important;
-  width: 100vw !important; height: 100vh !important;
-  border: 0 !important; pointer-events: none !important;
+div[role="radiogroup"] label span,
+div[role="radiogroup"] div[data-testid="stMarkdownContainer"] p {
+  color: inherit !important;
+  font-weight: inherit !important;
 }
 
-/* ---- glass panels: st.container(border=True) ---- */
-div[data-testid="stVerticalBlockBorderWrapper"] {
-  background: var(--glass) !important;
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  border: 1px solid var(--glass-border) !important;
-  border-radius: 22px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
-  padding: 4px !important;
-  margin-bottom: 1.4rem;
-  transition: box-shadow .3s ease, transform .3s ease;
-}
-div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-  box-shadow: 0 14px 44px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.10);
-}
-
-/* ---- glass metric tiles (the NOW / +24h / +48h / +72h badges) ---- */
-.glass-tile {
-  position: relative; overflow: hidden;
-  border-radius: 18px; padding: 18px 14px; text-align: center;
-  border: 1px solid rgba(255,255,255,.22);
-  box-shadow: 0 6px 22px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.18);
-  backdrop-filter: blur(6px);
-  transition: transform .22s ease, box-shadow .22s ease;
-}
-.glass-tile:hover { transform: translateY(-4px) scale(1.015); box-shadow: 0 12px 30px rgba(0,0,0,.45); }
-.glass-tile .g-label { font-size: .8rem; font-weight: 700; opacity: .9; letter-spacing: .04em; text-transform: uppercase; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
-.glass-tile .g-value { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1.05; margin: 2px 0; text-shadow: 0 2px 6px rgba(0,0,0,.35); }
-.glass-tile .g-cat { font-size: .84rem; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
-.glass-tile .g-sub { font-size: .74rem; opacity: .9; margin-top: 2px; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 6px 22px rgba(220,40,60,.25), inset 0 1px 0 rgba(255,255,255,.18); }
-  50%      { box-shadow: 0 6px 34px rgba(220,40,60,.55), inset 0 1px 0 rgba(255,255,255,.18); }
-}
-.glass-tile.g-hazard { animation: pulse-glow 2.4s ease-in-out infinite; }
-
-/* ---- legend pills ---- */
-.pill-row { margin: 4px 0 14px; display: flex; flex-wrap: wrap; gap: 6px; }
-.pill {
-  padding: 4px 12px; border-radius: 999px; font-size: .72rem; font-weight: 700;
-  color: #10131f; border: 1px solid rgba(255,255,255,.35);
-  box-shadow: 0 2px 8px rgba(0,0,0,.25);
-}
-
-/* ---- widgets ---- */
-[data-testid="stExpander"] {
-  background: var(--glass) !important; backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border) !important; border-radius: 18px !important;
-  overflow: hidden;
-}
-[data-testid="stAlert"] {
-  border-radius: 16px !important; backdrop-filter: blur(14px);
-  border: 1px solid var(--glass-border) !important;
-}
-[data-testid="stMetric"] {
-  background: var(--glass); border: 1px solid var(--glass-border);
-  border-radius: 14px; padding: 10px 6px;
-}
-[data-testid="stMetricValue"] { color: var(--text) !important; }
-[data-testid="stMetricLabel"] { color: var(--text-dim) !important; }
-[data-testid="stDataFrame"] { border-radius: 14px; overflow: hidden; background: var(--glass-strong); }
-div[role="radiogroup"] label {
-  background: var(--glass); border: 1px solid var(--glass-border);
-  border-radius: 999px !important; padding: 4px 14px !important; margin-right: 6px;
-}
+/* Selectbox Styling (High Contrast) */
 [data-baseweb="select"] > div {
-  background: var(--glass) !important; border-color: var(--glass-border) !important;
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+
+[data-baseweb="select"] span, [data-baseweb="select"] div {
+  color: #0f172a !important;
+}
+
+[data-baseweb="select"] svg {
+  fill: #0f172a !important;
+}
+
+div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"], li[role="option"] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
   border-radius: 12px !important;
 }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 8px; }
+li[role="option"]:hover, li[aria-selected="true"] {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Streamlit Metrics */
+[data-testid="stMetric"] {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 20px !important;
+  padding: 16px 18px !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+[data-testid="stMetric"]:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.06) !important;
+}
+
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {
+  color: #0f172a !important;
+  font-weight: 900 !important;
+  font-size: 1.85rem !important;
+  letter-spacing: -0.03em !important;
+}
+
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {
+  color: #64748b !important;
+  font-weight: 700 !important;
+  font-size: 0.78rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* Expanders */
+[data-testid="stExpander"] {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+  overflow: hidden !important;
+}
+
+[data-testid="stExpander"] summary {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  padding: 14px 18px !important;
+}
+
+[data-testid="stExpander"] summary:hover {
+  color: #0284c7 !important;
+}
+
+[data-testid="stExpander"] summary svg {
+  fill: #0f172a !important;
+}
+
+[data-testid="stExpanderDetails"] {
+  padding: 14px 18px !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] {
+  border-radius: 14px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+}
+
+/* Footer */
+.dock-footer {
+  text-align: center;
+  padding: 2.5rem 1rem 1rem;
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+.dock-footer a {
+  color: #0d0d0d;
+  font-weight: 700;
+  text-decoration: none;
+}
 </style>
-"""
-
-# Small, dependency-free particle field: cool/violet motes drifting slowly,
-# scattering from the cursor within a short radius, easing back afterwards.
-# Themed loosely as haze/smog motes being "cleared" by the pointer - a nod to
-# the app's subject without touching any real data.
-_BACKGROUND_HTML = """
-<!DOCTYPE html><html><head><style>
-  html,body{margin:0;padding:0;overflow:hidden;background:transparent;}
-  canvas{display:block;}
-</style></head><body>
-<canvas id="sky"></canvas>
-<script>
-(function () {
-  var canvas = document.getElementById('sky');
-  var ctx = canvas.getContext('2d');
-  var W = window.innerWidth, H = window.innerHeight;
-  canvas.width = W; canvas.height = H;
-  window.addEventListener('resize', function () {
-    W = window.innerWidth; H = window.innerHeight;
-    canvas.width = W; canvas.height = H;
-  });
-
-  var N = Math.max(70, Math.min(160, Math.floor((W * H) / 7000)));
-  var pts = [];
-  for (var i = 0; i < N; i++) {
-    var big = Math.random() < 0.22;
-    pts.push({
-      x: Math.random() * W, y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.12, vy: (Math.random() - 0.5) * 0.12,
-      r: big ? (Math.random() * 2.2 + 2.6) : (Math.random() * 1.4 + 1.1),
-      tw: Math.random() * Math.PI * 2,
-      hue: Math.random() < 0.4 ? '186,230,253' : (Math.random() < 0.7 ? '221,190,254' : '251,182,206')
-    });
-  }
-
-  // Clouds: soft clusters of overlapping radial-gradient puffs, dark violet,
-  // drifting slowly and independently of the cursor (unlike the star field
-  // above, these are a passive far-background layer - real night clouds don't
-  // dodge anything). Each puff's gradient is built ONCE, in cloud-local
-  // coordinates; every frame just translates and fillRects it, which is cheap
-  // - recreating gradients per frame would not be.
-  var clouds = [];
-  var CLOUD_N = Math.max(3, Math.min(6, Math.round(W / 480)));
-  for (var ci = 0; ci < CLOUD_N; ci++) {
-    var puffs = [];
-    var puffCount = 4 + Math.floor(Math.random() * 4);
-    var spread = 90 + Math.random() * 70;
-    for (var pi = 0; pi < puffCount; pi++) {
-      var dx = (Math.random() - 0.5) * spread * 1.7;
-      var dy = (Math.random() - 0.5) * spread * 0.5;
-      var rad = spread * (0.5 + Math.random() * 0.45);
-      // Lighter, cooler-grey than the sky behind it, like moonlit cloud vapor -
-      // a cloud tinted the same purple as its background has no contrast to
-      // read by at all, which is what made the first pass invisible.
-      var g = ctx.createRadialGradient(dx, dy, 0, dx, dy, rad);
-      g.addColorStop(0,    'rgba(168,158,208,0.62)');
-      g.addColorStop(0.55, 'rgba(120,105,165,0.34)');
-      g.addColorStop(1,    'rgba(90,75,130,0)');
-      puffs.push({ dx: dx, dy: dy, r: rad, grad: g });
-    }
-    clouds.push({
-      x: Math.random() * W,
-      y: H * (0.04 + Math.random() * 0.34),
-      vx: 0.03 + Math.random() * 0.035,
-      alpha: 0.6 + Math.random() * 0.3,
-      puffs: puffs
-    });
-  }
-
-  // Mouse position comes from the PARENT document: this iframe is forced
-  // pointer-events:none (see theme CSS) so it never intercepts real clicks,
-  // which means it also never receives mousemove directly. Same-origin
-  // access to window.parent is what components.v1.html provides; if a
-  // future Streamlit version sandboxes that away, this just throws once and
-  // the animation quietly falls back to ambient drift below.
-  var mouseX = -9999, mouseY = -9999, haveMouse = false;
-  try {
-    window.parent.document.addEventListener('mousemove', function (e) {
-      mouseX = e.clientX; mouseY = e.clientY; haveMouse = true;
-    });
-    window.parent.document.addEventListener('mouseleave', function () {
-      haveMouse = false;
-    });
-  } catch (err) { haveMouse = false; }
-
-  var t = 0;
-  function frame() {
-    t += 0.016;
-    ctx.clearRect(0, 0, W, H);
-    for (var i = 0; i < pts.length; i++) {
-      var p = pts[i];
-      p.x += p.vx; p.y += p.vy;
-
-      if (haveMouse) {
-        var dx = p.x - mouseX, dy = p.y - mouseY;
-        var d2 = dx * dx + dy * dy, R = 140;
-        if (d2 < R * R) {
-          var d = Math.sqrt(d2) || 1;
-          var f = (1 - d / R) * 2.4;
-          p.x += (dx / d) * f; p.y += (dy / d) * f;
-        }
-      } else {
-        p.x += Math.sin(t * 0.3 + p.y * 0.01) * 0.25;
-        p.y += Math.cos(t * 0.25 + p.x * 0.01) * 0.15;
-      }
-
-      if (p.x < -8) p.x = W + 8; if (p.x > W + 8) p.x = -8;
-      if (p.y < -8) p.y = H + 8; if (p.y > H + 8) p.y = -8;
-
-      var alpha = 0.72 + 0.28 * Math.sin(t * 0.8 + p.tw);
-      ctx.save();
-      // A modest, FIXED blur (not scaled with radius - a large blur spread
-      // over a tiny circle dilutes per-pixel intensity to near-invisibility,
-      // which is what made the first pass of this effect too subtle to read
-      // as anything at normal viewing size).
-      ctx.shadowBlur = 5;
-      ctx.shadowColor = 'rgba(' + p.hue + ',1)';
-      ctx.beginPath();
-      ctx.fillStyle = 'rgba(' + p.hue + ',' + alpha + ')';
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // Clouds draw AFTER stars so they visibly veil whatever star sits behind
-    // them as they pass - the depth cue that sells "sky", not just "dots".
-    for (var c = 0; c < clouds.length; c++) {
-      var cl = clouds[c];
-      cl.x += cl.vx;
-      if (cl.x - 260 > W) cl.x = -260;
-      ctx.save();
-      ctx.translate(cl.x, cl.y);
-      ctx.globalAlpha = cl.alpha;
-      for (var pf = 0; pf < cl.puffs.length; pf++) {
-        var puff = cl.puffs[pf];
-        ctx.fillStyle = puff.grad;
-        ctx.fillRect(puff.dx - puff.r, puff.dy - puff.r, puff.r * 2, puff.r * 2);
-      }
-      ctx.restore();
-    }
-
-    requestAnimationFrame(frame);
-  }
-  frame();
-})();
-</script>
-</body></html>
 """
 
 
@@ -350,33 +731,162 @@ def inject_theme() -> None:
         st.markdown(CSS, unsafe_allow_html=True)
     except Exception:
         pass
-    try:
-        components.html(_BACKGROUND_HTML, height=0, scrolling=False)
-    except Exception:
-        pass
+
+
+def render_navbar(city_name: str) -> None:
+    """Renders the floating frosted pill navigation bar without markdown indentation."""
+    nav_html = (
+        f'<div class="dock-nav-outer">'
+        f'<div class="dock-nav">'
+        f'<a href="#top" class="nav-brand">'
+        f'<div class="brand-icon">🌫️</div>'
+        f'<div><span class="brand-title">{city_name} AQI</span></div>'
+        f'</a>'
+        f'<div class="nav-links">'
+        f'<a href="#overview" class="nav-link">Overview</a>'
+        f'<a href="#forecast" class="nav-link">Forecast 72h</a>'
+        f'<a href="#trend" class="nav-link">Trend</a>'
+        f'<a href="#drivers" class="nav-link">SHAP Drivers</a>'
+        f'<a href="#telemetry" class="nav-link">Sensors</a>'
+        f'</div>'
+        f'<div><span class="nav-btn-pill"><span class="nav-live-dot"></span> Sync: Live</span></div>'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(nav_html, unsafe_allow_html=True)
+
+
+def render_hero(city_name: str) -> None:
+    """Renders the hero display at the top of the page."""
+    hero_html = (
+        f'<div class="hero-wrapper" id="top" style="scroll-margin-top:90px">'
+        f'<div class="hero-chip">Air Quality Forecasting</div>'
+        f'<h1 class="hero-title">24-72 hour air quality<br>forecasts for {city_name}.</h1>'
+        f'<p class="hero-subtitle">Real-time CAMS air quality, per-horizon machine learning forecasts, '
+        f'and live atmospheric telemetry for {city_name}.</p>'
+        f'<div class="hero-tags">'
+        f'<span class="tag-capsule">Hopsworks Feature Store</span>'
+        f'<span class="tag-capsule">XGBoost + TensorFlow</span>'
+        f'<span class="tag-capsule">CAMS Air Quality</span>'
+        f'<span class="tag-capsule">Open-Meteo Forecast</span>'
+        f'<span class="tag-capsule">SHAP Explainability</span>'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(hero_html, unsafe_allow_html=True)
+
+
+def render_live_dock(current: dict, preds: dict, last_row: dict, obs_time: datetime, city_name: str) -> None:
+    """Renders the signature interactive Live AQI Dock widget with clean compact HTML."""
+    time_str = obs_time.strftime("%I:%M %p")
+    date_str = obs_time.strftime("%a, %d %b")
+
+    aqi_val = current.get("aqi", 0.0)
+    from config import categorize_aqi, category_color
+    cat_name = categorize_aqi(aqi_val)
+    cat_col = category_color(aqi_val)
+    text_color = "#10131f" if cat_name in ("Good", "Moderate", "Unhealthy for Sensitive Groups") else "#ffffff"
+
+    temp = last_row.get("temperature_2m", None)
+    temp_str = f"{temp:.0f}°C" if temp is not None else "—"
+    hum = last_row.get("relative_humidity_2m", None)
+    hum_str = f"{hum:.0f}%" if hum is not None else "—"
+    wind = last_row.get("wind_speed_10m", None)
+    wind_str = f"{wind:.0f} km/h" if wind is not None else "—"
+
+    # Mini forecast horizon items
+    f_items = []
+    for h in [24, 48, 72]:
+        if h in preds:
+            val = preds[h]["value"]
+            c_col = category_color(val)
+            f_items.append(
+                f'<div class="dock-horizon-pill">'
+                f'<span class="dock-h-name">+{h}h</span>'
+                f'<span class="dock-h-val" style="color:{c_col};">{val:.0f}</span>'
+                f'</div>'
+            )
+    f_items_html = "".join(f_items)
+
+    pm25 = last_row.get("pm25", None)
+    pm25_str = f"{pm25:.1f}" if pm25 is not None else "—"
+    pm10 = last_row.get("pm10", None)
+    pm10_str = f"{pm10:.1f}" if pm10 is not None else "—"
+
+    dock_html = (
+        f'<div class="aqi-dock-container" id="overview" style="scroll-margin-top:90px">'
+        f'<div class="aqi-dock">'
+        f'<div class="dock-widget dock-widget-clock">'
+        f'<div class="dock-clock-time">{time_str}</div>'
+        f'<div class="dock-clock-date">{date_str} · {city_name}</div>'
+        f'</div>'
+        f'<div class="dock-widget dock-widget-aqi">'
+        f'<div class="dock-aqi-num" style="color:{cat_col};">{aqi_val:.0f}</div>'
+        f'<div class="dock-aqi-meta">'
+        f'<span class="dock-aqi-pill" style="background:{cat_col};color:{text_color};">{cat_name}</span>'
+        f'<span class="dock-aqi-label">Current US AQI</span>'
+        f'</div>'
+        f'</div>'
+        f'<div class="dock-widget dock-widget-weather">'
+        f'<div class="dock-weather-icon">🌫️</div>'
+        f'<div class="dock-weather-info">'
+        f'<div class="dock-weather-temp">{temp_str}</div>'
+        f'<div class="dock-weather-sub">{hum_str} hum · {wind_str} wind</div>'
+        f'</div>'
+        f'</div>'
+        f'<div class="dock-widget dock-widget-forecast">{f_items_html}</div>'
+        f'<div class="dock-widget dock-widget-telemetry">'
+        f'<div class="dock-telem-item"><span class="dock-telem-lbl">PM2.5</span><span class="dock-telem-val">{pm25_str}</span></div>'
+        f'<div style="width:1px;height:24px;background:rgba(255,255,255,0.15);"></div>'
+        f'<div class="dock-telem-item"><span class="dock-telem-lbl">PM10</span><span class="dock-telem-val">{pm10_str}</span></div>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(dock_html, unsafe_allow_html=True)
 
 
 def style_fig(fig):
     """
-    Apply the dark/glass theme to a Plotly figure's layout only - trace colors
-    and data are left alone, so this cannot change what a chart shows, only
-    how the canvas around it looks.
+    Apply the theme colors to a Plotly figure layout only - trace colors and
+    data are untouched, so this cannot change what a chart shows, only how it looks.
     """
     try:
         fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            # A darker, more opaque plot area than a first pass used - readable
-            # data/gridlines regardless of what the animated sky is doing behind
-            # the glass panel the chart sits in.
-            plot_bgcolor="rgba(8,5,16,0.45)",
-            font=dict(color="#f3f2fa", family="-apple-system, Segoe UI, Roboto, sans-serif", size=13),
-            xaxis=dict(gridcolor="rgba(255,255,255,0.14)", zerolinecolor="rgba(255,255,255,0.16)",
-                      tickfont=dict(color="#d8d4e8")),
-            yaxis=dict(gridcolor="rgba(255,255,255,0.14)", zerolinecolor="rgba(255,255,255,0.16)",
-                      tickfont=dict(color="#d8d4e8")),
-            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#f3f2fa")),
-            hoverlabel=dict(bgcolor="#1a0f2e", font_color="#f3f2fa",
-                            bordercolor="rgba(255,255,255,0.22)"),
+            paper_bgcolor="rgba(255, 255, 255, 0.0)",
+            plot_bgcolor="rgba(248, 250, 252, 0.75)",
+            font=dict(
+                color="#0f172a",
+                family="'Inter', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+                size=12
+            ),
+            xaxis=dict(
+                gridcolor="rgba(0, 0, 0, 0.07)",
+                zerolinecolor="rgba(0, 0, 0, 0.1)",
+                tickfont=dict(color="#475569", size=11, family="'Inter', sans-serif"),
+                title_font=dict(color="#0f172a", size=12, family="'Inter', sans-serif"),
+                showline=False,
+            ),
+            yaxis=dict(
+                gridcolor="rgba(0, 0, 0, 0.07)",
+                zerolinecolor="rgba(0, 0, 0, 0.1)",
+                tickfont=dict(color="#475569", size=11, family="'Inter', sans-serif"),
+                title_font=dict(color="#0f172a", size=12, family="'Inter', sans-serif"),
+                showline=False,
+            ),
+            legend=dict(
+                bgcolor="rgba(255, 255, 255, 0.85)",
+                bordercolor="rgba(0,0,0,0.08)",
+                borderwidth=1,
+                font=dict(color="#0f172a", size=11, family="'Inter', sans-serif")
+            ),
+            hoverlabel=dict(
+                bgcolor="#0f172a",
+                font_color="#ffffff",
+                font_size=12,
+                font_family="'Inter', -apple-system, sans-serif",
+                bordercolor="rgba(255, 255, 255, 0.2)"
+            ),
         )
     except Exception:
         pass
@@ -385,22 +895,41 @@ def style_fig(fig):
 
 def glass_tile(label: str, value: float, category: str, color: str, sub: str = "",
                hazard: bool = False) -> str:
-    text = "#10131f" if category in ("Good", "Moderate", "Unhealthy for Sensitive Groups") else "#fff"
-    hazard_class = " g-hazard" if hazard else ""
-    return f"""
-    <div class="glass-tile{hazard_class}" style="background:linear-gradient(160deg,{color}f0,{color}b8);color:{text};">
-      <div class="g-label">{label}</div>
-      <div class="g-value">{value:.0f}</div>
-      <div class="g-cat">{category}</div>
-      <div class="g-sub">{sub}</div>
-    </div>"""
+    """Bento-style tile for a forecast horizon."""
+    text_color = "#0f172a" if category in ("Good", "Moderate", "Unhealthy for Sensitive Groups") else "#ffffff"
+    hazard_class = " tile-hazard" if hazard else ""
+    return (
+        f'<div class="dock-bento-tile{hazard_class}" style="background:linear-gradient(145deg, {color}ee, {color}c0);color:{text_color};">'
+        f'<div class="tile-label">{label}</div>'
+        f'<div class="tile-val">{value:.0f}</div>'
+        f'<div class="tile-cat">{category}</div>'
+        f'<div class="tile-sub">{sub}</div>'
+        f'</div>'
+    )
 
 
 def glass_legend(items: dict) -> str:
+    """Category legend pills."""
     light_bg = ("Good", "Moderate", "Unhealthy for Sensitive Groups")
     chips = "".join(
-        f'<span class="pill" style="background:{color};'
-        f'color:{"#10131f" if name in light_bg else "#fff"};">{name}</span>'
+        f'<span class="dock-category-pill" style="background:{color};'
+        f'color:{"#0f172a" if name in light_bg else "#ffffff"};">{name}</span>'
         for name, color in items.items() if name != "Unknown"
     )
-    return f'<div class="pill-row">{chips}</div>'
+    return f'<div class="dock-pill-row">{chips}</div>'
+
+
+def render_hazard_banner(is_hazard: bool, title: str, description: str) -> None:
+    """Renders a hazard/success banner."""
+    cls = "alert-danger" if is_hazard else "alert-success"
+    icon = "⚠" if is_hazard else "✓"
+    html = (
+        f'<div class="dock-alert-banner {cls}">'
+        f'<div class="alert-icon">{icon}</div>'
+        f'<div class="alert-body">'
+        f'<div class="alert-title">{title}</div>'
+        f'<div>{description}</div>'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)

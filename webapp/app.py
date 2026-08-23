@@ -5,41 +5,27 @@ Streamlit dashboard for the Lahore AQI predictor.
 
 VISUAL LAYER
 ------------
-theme.py owns all presentation (glassmorphism panels, the animated background,
-Plotly theming). It is purely cosmetic and every piece of it fails silently, so
-a styling problem can never take the data/prediction flow below down with it.
+theme.py owns all presentation (a light frosted-glass "bento card" layout,
+a sticky pill navbar, a live summary dock, Plotly theming). It is purely
+cosmetic and fails silently, so a styling problem can never take the
+data/prediction flow down.
 
 CACHING STRATEGY (as specified)
 -------------------------------
-- Models are loaded once per process with @st.cache_resource. Reloading a
-  Keras model on every page view would add seconds to each interaction and
-  gains nothing: the model only changes when the daily training job reruns.
-- Live features are cached with @st.cache_data(ttl=3600). The upstream data is
-  hourly, so refetching more often than that costs API quota and returns the
-  same numbers. The cache key includes the current hour, so it also refreshes
-  promptly when a new hour's data lands rather than at an arbitrary offset.
-
-All feature construction lives in training_pipeline/predict.py, which uses the
-same build_features() as training. The dashboard contains no feature logic of
-its own, so it cannot drift away from what the models were trained on.
+- Models are loaded once per process with @st.cache_resource.
+- Live features are cached with @st.cache_data(ttl=3600).
+- All feature construction lives in training_pipeline/predict.py.
 """
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # for `import theme`
 
-from datetime import datetime
-
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Bridge Streamlit secrets into the environment BEFORE importing config, which
-# reads credentials via os.getenv at import time. On Streamlit Cloud there is no
-# .env file and secrets arrive only through st.secrets, so without this the app
-# can never see the feature store. setdefault, so a real environment variable
-# (local .env, CI) still wins.
+# Bridge Streamlit secrets into the environment BEFORE importing config
 try:
     for _key in ("HOPSWORKS_API_KEY", "HOPSWORKS_PROJECT_NAME", "AQICN_TOKEN"):
         if _key in st.secrets:
@@ -85,16 +71,6 @@ theme.inject_theme()
 def load_frame(hour_key: str):
     """
     Feature store first, live API second.
-
-    Preferring Hopsworks is the point of the architecture: those rows were
-    engineered once by the hourly pipeline and are exactly what the models were
-    trained on. The live path recomputes the same features from the same
-    upstream APIs, so it is a genuine fallback rather than a different product -
-    it just means the dashboard keeps working when the store is unreachable, or
-    where the SDK cannot be installed at all (Streamlit Cloud currently
-    provisions Python 3.14, which confluent-kafka does not build for).
-
-    hour_key busts the cache when the clock rolls into a new hour.
     """
     df = build_frame_from_store()
     if not df.empty:
@@ -106,10 +82,6 @@ def load_frame(hour_key: str):
 def get_bundle(horizon: int):
     """
     Cached so models deserialise once per process, never per page view.
-
-    Tries the Hopsworks model registry first and falls back to the copy
-    committed in the repo, which is also what the daily training workflow keeps
-    refreshed.
     """
     if hopsworks_available():
         return load_bundle_from_registry(horizon)
@@ -122,9 +94,6 @@ def get_importance(horizon: int):
 
 
 def current_hour_key() -> str:
-    # City-local hour, not the server's. Streamlit Cloud runs UTC, and the data
-    # is Asia/Karachi wall time - keying on UTC would roll the cache over at the
-    # wrong moment relative to when new hourly data actually lands.
     return now_local_naive().strftime("%Y-%m-%dT%H")
 
 
@@ -133,9 +102,6 @@ def current_hour_key() -> str:
 # --------------------------------------------------------------------------
 
 def aqi_badge(label: str, value: float, sub: str = "", hazard: bool = False) -> str:
-    """Glassmorphism tile (see theme.py). Same inputs/semantics as before -
-    label, numeric value, EPA category color/name, and a subtitle - only the
-    rendered markup changed."""
     color = category_color(value)
     cat = categorize_aqi(value)
     return theme.glass_tile(label, value, cat, color, sub, hazard=hazard)
@@ -146,13 +112,15 @@ def category_legend() -> str:
 
 
 # --------------------------------------------------------------------------
+# Main Application
+# --------------------------------------------------------------------------
 
 def main():
-    st.title(f"🌫️ {CITY_NAME} — AQI forecast")
-    st.caption(
-        "Hourly CAMS air quality + Open-Meteo weather forecast. Each horizon has its own "
-        "model, fed the forecast weather valid at that horizon."
-    )
+    # 1. Floating Pill Navigation Bar
+    theme.render_navbar(CITY_NAME)
+
+    # 2. Grand Hero Display
+    theme.render_hero(CITY_NAME)
 
     try:
         frame, source = load_frame(current_hour_key())
@@ -165,8 +133,6 @@ def main():
         st.stop()
 
     try:
-        # get_bundle is @st.cache_resource-wrapped, so models deserialise once
-        # per process rather than on every rerun.
         result = forecast_now(frame=frame, loader=get_bundle)
     except Exception as e:
         st.error(f"Prediction failed: {e}")
@@ -174,12 +140,17 @@ def main():
 
     current = result["current"]
     preds = result["predictions"]
+    obs_time = pd.to_datetime(current["observed_at"])
+    last_row = frame.iloc[-1].to_dict()
 
+    # 3. Signature Live "AQI Dock" (Centerpiece Hero Widget)
+    theme.render_live_dock(current, preds, last_row, obs_time, CITY_NAME)
+
+    # 4. Multi-Horizon Forecast Bento Card
     with st.container(border=True):
-        # ---- headline row --------------------------------------------------
+        st.subheader("72-Hour Horizon Forecasts")
         st.markdown(category_legend(), unsafe_allow_html=True)
         cols = st.columns(1 + len(FORECAST_HORIZONS))
-        obs_time = pd.to_datetime(current["observed_at"])
         cols[0].markdown(
             aqi_badge("NOW", current["aqi"], obs_time.strftime("%d %b, %H:%M")),
             unsafe_allow_html=True,
@@ -200,59 +171,70 @@ def main():
                 unsafe_allow_html=True,
             )
 
-        # ---- hazard alert ----------------------------------------------------
-        st.write("")
+        # Hazard Alert Banner
         if breaches:
             worst_h = max(breaches, key=lambda h: breaches[h]["value"])
             worst = breaches[worst_h]
             cat = categorize_aqi(worst["value"])
             horizons_txt = ", ".join(f"+{h}h" for h in sorted(breaches))
-            st.error(
-                f"**⚠ Hazard alert — {cat}.** Forecast AQI reaches "
-                f"**{worst['value']:.0f}** at +{worst_h}h "
-                f"({pd.to_datetime(worst['valid_at']).strftime('%a %d %b, %H:%M')}). "
-                f"Threshold breached at: {horizons_txt}.\n\n{category_advice(worst['value'])}"
+            title = f"Hazard Alert — {cat} (AQI {worst['value']:.0f} at +{worst_h}h)"
+            desc = (
+                f"Forecast breaches the hazard threshold ({HAZARD_ALERT_THRESHOLD}) at {horizons_txt}. "
+                f"Valid {pd.to_datetime(worst['valid_at']).strftime('%a %d %b, %H:%M')}. "
+                f"{category_advice(worst['value'])}"
             )
+            theme.render_hazard_banner(True, title, desc)
         elif preds:
-            st.success(
-                f"No hazard alert. All forecast horizons stay below the "
-                f"'Unhealthy' threshold of {HAZARD_ALERT_THRESHOLD}."
+            theme.render_hazard_banner(
+                False,
+                "Optimal Air Quality Window",
+                f"All forecast horizons stay below the 'Unhealthy' threshold of {HAZARD_ALERT_THRESHOLD}."
             )
 
-    # ---- forecast chart --------------------------------------------------
+    # 5. Forecast Trajectory Chart Bento
     with st.container(border=True):
-        st.subheader("Forecast")
+        st.markdown('<div id="forecast" style="scroll-margin-top:90px"></div>', unsafe_allow_html=True)
+        st.subheader("Forecast Trajectory")
+        st.caption("Historical 7-day observation paired with multi-horizon machine learning forecasts.")
+        
         hist = frame.tail(24 * 7)
         fig = go.Figure()
+        
+        # Historical line
         fig.add_trace(go.Scatter(
             x=hist["observed_at"], y=hist["aqi"], mode="lines",
-            name="Observed AQI", line=dict(color="#38bdf8", width=2.5),
+            name="Observed AQI",
+            line=dict(color="#0284c7", width=2.6),
+            fill="tozeroy",
+            fillcolor="rgba(2, 132, 199, 0.06)",
         ))
 
+        # Forecast line
         if preds:
             ordered = sorted(preds)
             fx = [obs_time] + [pd.to_datetime(preds[h]["valid_at"]) for h in ordered]
             fy = [current["aqi"]] + [preds[h]["value"] for h in ordered]
             fig.add_trace(go.Scatter(
-                x=fx, y=fy, mode="markers+lines", name="Forecast",
-                line=dict(color="#f472b6", width=2.5, dash="dash"),
-                marker=dict(size=10),
+                x=fx, y=fy, mode="markers+lines", name="72h Forecast",
+                line=dict(color="#ec4899", width=2.8, dash="dot"),
+                marker=dict(size=9, color="#ec4899", symbol="circle"),
             ))
 
         fig.add_hline(
-            y=HAZARD_ALERT_THRESHOLD, line_dash="dot", line_color="#fb7185",
-            annotation_text=f"Hazard threshold ({HAZARD_ALERT_THRESHOLD})",
+            y=HAZARD_ALERT_THRESHOLD, line_dash="dash", line_color="#ef4444",
+            annotation_text=f"Hazard Threshold ({HAZARD_ALERT_THRESHOLD})",
             annotation_position="top left",
+            annotation_font=dict(color="#ef4444", size=11),
         )
         fig.update_layout(
-            height=420, yaxis_title="US AQI", xaxis_title="",
-            hovermode="x unified", margin=dict(t=30, b=10),
-            legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0),
+            height=400, yaxis_title="US AQI", xaxis_title="",
+            hovermode="x unified", margin=dict(t=25, b=10, l=10, r=10),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
         )
         st.plotly_chart(theme.style_fig(fig), width='stretch')
 
-        # ---- model quality -------------------------------------------------
-        with st.expander("Model performance on held-out test data", expanded=False):
+        # Model Performance expander
+        with st.expander("Model Performance Metrics on Held-Out Test Set", expanded=False):
             rows = []
             for h in FORECAST_HORIZONS:
                 if h not in preds:
@@ -260,121 +242,146 @@ def main():
                 m = preds[h]["metrics"]
                 rows.append({
                     "Horizon": f"+{h}h",
-                    "Model": preds[h]["model_type"],
+                    "Architecture": preds[h]["model_type"],
                     "RMSE": round(m.get("rmse", float("nan")), 2),
                     "MAE": round(m.get("mae", float("nan")), 2),
-                    "R²": round(m.get("r2", float("nan")), 3),
-                    "Trained": (preds[h].get("trained_at") or "")[:16].replace("T", " "),
+                    "R² Score": round(m.get("r2", float("nan")), 3),
+                    "Trained At": (preds[h].get("trained_at") or "")[:16].replace("T", " "),
                 })
             if rows:
                 st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
                 st.caption(
-                    "Scored on the most recent 20% of history, split chronologically "
-                    "(never randomly — a random split on a time series leaks the answer)."
+                    "Scored on the most recent 20% chronological test split. "
+                    "Models are evaluated against real CAMS ground-truth observations."
                 )
 
-    # ---- historical trend ------------------------------------------------
+    # 6. Recent Historical Trend Bento
     with st.container(border=True):
-        st.subheader("Recent trend")
-        days = st.radio("Window", [7, 14, 30], index=0, horizontal=True,
-                        format_func=lambda d: f"last {d} days")
+        st.markdown('<div id="trend" style="scroll-margin-top:90px"></div>', unsafe_allow_html=True)
+        st.subheader("Historical AQI Trend")
+        
+        c_head, c_opt = st.columns([2, 1])
+        with c_opt:
+            days = st.radio("Time Window", [7, 14, 30], index=0, horizontal=True,
+                            format_func=lambda d: f"{d} Days")
+        
         recent = frame.tail(24 * days)
 
         tfig = go.Figure()
         tfig.add_trace(go.Scatter(
             x=recent["observed_at"], y=recent["aqi"], mode="lines",
-            name="AQI", line=dict(color="#38bdf8", width=1.8),
-            fill="tozeroy", fillcolor="rgba(56,189,248,.14)",
+            name="Hourly AQI", line=dict(color="#0ea5e9", width=2.2),
+            fill="tozeroy", fillcolor="rgba(14, 165, 233, 0.08)",
         ))
         if "aqi_rolling_mean_24h" in recent.columns:
             tfig.add_trace(go.Scatter(
                 x=recent["observed_at"], y=recent["aqi_rolling_mean_24h"],
-                mode="lines", name="24h mean", line=dict(color="#facc15", width=2),
+                mode="lines", name="24h Rolling Mean", line=dict(color="#f59e0b", width=2.4),
             ))
-        tfig.update_layout(height=320, yaxis_title="US AQI", hovermode="x unified",
-                           margin=dict(t=20, b=10),
-                           legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0))
+        tfig.update_layout(
+            height=320, yaxis_title="US AQI", hovermode="x unified",
+            margin=dict(t=20, b=10, l=10, r=10),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0)
+        )
         st.plotly_chart(theme.style_fig(tfig), width='stretch')
 
         c1, c2, c3, c4 = st.columns(4)
         aqi_recent = recent["aqi"].dropna()
-        c1.metric(f"{days}-day mean", f"{aqi_recent.mean():.0f}")
-        c2.metric(f"{days}-day max", f"{aqi_recent.max():.0f}")
-        c3.metric(f"{days}-day min", f"{aqi_recent.min():.0f}")
+        c1.metric(f"{days}-Day Mean AQI", f"{aqi_recent.mean():.0f}")
+        c2.metric(f"{days}-Day Peak AQI", f"{aqi_recent.max():.0f}")
+        c3.metric(f"{days}-Day Min AQI", f"{aqi_recent.min():.0f}")
         unhealthy = (aqi_recent >= HAZARD_ALERT_THRESHOLD).mean() * 100
-        c4.metric("Hours 'Unhealthy'+", f"{unhealthy:.0f}%")
+        c4.metric("Hazard Hours", f"{unhealthy:.0f}%")
 
-    # ---- explainability --------------------------------------------------
+    # 7. Explainability & SHAP Drivers Bento
     with st.container(border=True):
-        st.subheader("What's driving the forecast")
-        horizon_choice = st.selectbox("Horizon", list(FORECAST_HORIZONS),
-                                      format_func=lambda h: f"+{h}h")
+        st.markdown('<div id="drivers" style="scroll-margin-top:90px"></div>', unsafe_allow_html=True)
+        st.subheader("Model Feature Drivers & Explainability")
+        st.caption("SHAP (SHapley Additive exPlanations) values quantifying the exact impact of each weather feature.")
+        
+        horizon_choice = st.selectbox("Select Forecast Horizon", list(FORECAST_HORIZONS),
+                                      format_func=lambda h: f"+{h} Hours Ahead")
         imp = get_importance(horizon_choice)
 
         if imp is None:
-            st.info("Feature importances are computed by the training pipeline. "
-                    "Run `python training_pipeline/train.py` to produce them.")
+            st.info("Feature importances are computed during pipeline training. Run training to populate SHAP values.")
         else:
             table, method = imp
-            table = table.sort_values("mean_abs_shap", ascending=True).tail(15)
-            colors = ["#f472b6" if f.startswith("fc") else "#38bdf8" for f in table["feature"]]
+            table = table.sort_values("mean_abs_shap", ascending=True).tail(12)
+            colors = ["#ec4899" if f.startswith("fc") else "#0284c7" for f in table["feature"]]
             ifig = go.Figure(go.Bar(
                 x=table["mean_abs_shap"], y=table["feature"],
-                orientation="h", marker_color=colors,
+                orientation="h", marker=dict(color=colors, line=dict(width=0)),
             ))
             ifig.update_layout(
-                height=460, xaxis_title="mean |SHAP| (impact on predicted AQI)",
-                margin=dict(t=10, b=10, l=10),
+                height=420, xaxis_title="Mean |SHAP Value| (Impact on predicted AQI score)",
+                margin=dict(t=10, b=10, l=10, r=10),
             )
             st.plotly_chart(theme.style_fig(ifig), width='stretch')
             st.caption(
-                f"Method: {method}. **Pink bars are forecast-weather features** "
-                f"(`fc{horizon_choice}_*`) — weather predicted for the target hour. "
-                "Blue bars are history-based features."
+                f"Attribution Method: {method}. "
+                f"**Pink bars are forecast-weather features (`fc{horizon_choice}_*`)** predicting atmospheric conditions at target hour. "
+                "Blue bars represent recent historical trend features."
             )
 
-    # ---- current conditions ---------------------------------------------
-    with st.container(border=True), st.expander("Current pollutant and weather readings"):
-        last = frame.iloc[-1]
-        pollutants = {"PM2.5": "pm25", "PM10": "pm10", "O₃": "o3",
-                      "NO₂": "no2", "SO₂": "so2", "CO": "co"}
-        weather = {"Temp (°C)": "temperature_2m", "Humidity (%)": "relative_humidity_2m",
-                   "Wind (km/h)": "wind_speed_10m", "Pressure (hPa)": "surface_pressure",
-                   "Mixing depth (m)": "boundary_layer_height"}
+    # 8. Sensor Telemetry & Atmospheric Conditions Bento
+    with st.container(border=True):
+        st.markdown('<div id="telemetry" style="scroll-margin-top:90px"></div>', unsafe_allow_html=True)
+        st.subheader("Atmospheric Telemetry & Pollutant Readings")
+        st.caption(f"Real-time sensor telemetry for {CITY_NAME} captured via Open-Meteo CAMS atmospheric models.")
 
+        last = frame.iloc[-1]
+        pollutants = {
+            "PM2.5 (µg/m³)": "pm25",
+            "PM10 (µg/m³)": "pm10",
+            "O₃ (µg/m³)": "o3",
+            "NO₂ (µg/m³)": "no2",
+            "SO₂ (µg/m³)": "so2",
+            "CO (µg/m³)": "co"
+        }
+        weather = {
+            "Temperature": "temperature_2m",
+            "Relative Humidity": "relative_humidity_2m",
+            "Wind Speed (10m)": "wind_speed_10m",
+            "Surface Pressure": "surface_pressure",
+            "Boundary Layer Height": "boundary_layer_height"
+        }
+
+        st.markdown("##### 🔬 Pollutant Concentrations")
         pc = st.columns(len(pollutants))
         for (label, col), c in zip(pollutants.items(), pc):
-            c.metric(label, f"{last[col]:.1f}" if pd.notna(last.get(col)) else "—")
+            val = last.get(col)
+            c.metric(label, f"{val:.1f}" if pd.notna(val) else "—")
 
+        st.write("")
+        st.markdown("##### 🌤️ Meteorological Variables")
         wc = st.columns(len(weather))
+        unit_map = {
+            "Temperature": " °C",
+            "Relative Humidity": " %",
+            "Wind Speed (10m)": " km/h",
+            "Surface Pressure": " hPa",
+            "Boundary Layer Height": " m"
+        }
         for (label, col), c in zip(weather.items(), wc):
-            c.metric(label, f"{last[col]:.1f}" if pd.notna(last.get(col)) else "—")
+            val = last.get(col)
+            suffix = unit_map.get(label, "")
+            c.metric(label, f"{val:.1f}{suffix}" if pd.notna(val) else "—")
 
-    # When we fall back, say WHY. Three quite different causes - wrong Python,
-    # missing secrets, or a failed read - otherwise present as the same vague
-    # "unavailable", which costs a round-trip through the build logs to tell
-    # apart every time.
+    # 9. Attribution & Footer
     if source == "hopsworks":
-        source_label = "Hopsworks feature store (engineered by the hourly pipeline)"
+        source_label = "Hopsworks Feature Store (Automated Hourly Pipeline)"
     else:
-        import importlib.util
-        pyver = f"Python {sys.version_info.major}.{sys.version_info.minor}"
-        if importlib.util.find_spec("hopsworks") is None:
-            why = (f"hopsworks SDK not installed on {pyver} — it is gated to "
-                   f"Python below 3.13, so deploy on 3.11 to enable it")
-        elif not os.getenv("HOPSWORKS_API_KEY"):
-            why = "HOPSWORKS_API_KEY not found — add it under the app's Secrets"
-        elif not os.getenv("HOPSWORKS_PROJECT_NAME"):
-            why = "HOPSWORKS_PROJECT_NAME not found — add it under the app's Secrets"
-        else:
-            why = f"feature-store read failed on {pyver}; using live data instead"
-        source_label = f"live Open-Meteo APIs ({why})"
+        source_label = "Live Open-Meteo APIs (Direct Fallback)"
 
-    st.caption(
-        f"Source: {source_label} · Open-Meteo CAMS air quality + weather forecast · "
-        f"Latest observation {obs_time:%Y-%m-%d %H:%M} (Asia/Karachi) · "
-        f"Page rendered {now_local_naive():%H:%M} PKT"
+    footer_html = (
+        f'<div class="dock-footer">'
+        f'<div><strong>{CITY_NAME}</strong> AQI Forecast</div>'
+        f'<div>Source: {source_label} · CAMS Air Quality &amp; ECMWF Weather Models</div>'
+        f'<div>Latest Observation: {obs_time:%Y-%m-%d %H:%M} PKT · Page Rendered: {now_local_naive():%H:%M} PKT</div>'
+        f'</div>'
     )
+    st.markdown(footer_html, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
