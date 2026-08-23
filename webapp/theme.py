@@ -40,7 +40,7 @@ html {
   scroll-behavior: smooth !important;
 }
 
-/* Base canvas + a soft glowing perimeter vignette */
+/* Base canvas */
 html, body, [data-testid="stApp"] {
   background-color: var(--bg-canvas) !important;
   color: var(--text-main) !important;
@@ -50,19 +50,10 @@ html, body, [data-testid="stApp"] {
   padding: 0;
 }
 
-/* Soft glowing perimeter vignette around the viewport edge */
-[data-testid="stAppViewContainer"]::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 999999;
-  box-shadow: 
-    inset 0 0 60px 15px rgba(59, 130, 246, 0.42),
-    inset 0 0 140px 45px rgba(99, 102, 241, 0.22);
-}
-
-/* Flat canvas - no background image or gradient here on purpose. */
+/* Flat canvas - no background image, gradient, or perimeter glow here on
+   purpose. A blue/indigo inset box-shadow glow used to sit on a fixed
+   pseudo-element wrapping the viewport; removed at the project owner's
+   request, independent of the earlier hero-photo removal. */
 [data-testid="stAppViewContainer"] {
   background-color: var(--bg-canvas) !important;
   background-image: none !important;
