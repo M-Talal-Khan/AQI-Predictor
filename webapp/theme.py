@@ -13,35 +13,16 @@ from Google Fonts via a render-blocking `@import`, which risks stalling first
 paint for any visitor with latency or a failure reaching that host. System
 font stacks only.
 
-HERO BACKGROUND IMAGE
-----------------------
-webapp/assets/hero_bg.jpg - a hazy, smog-obscured sun over Lahore. Source:
-"Global dimming?" by Tore Urnes (Oslo, Norway), licensed CC BY 2.0, via
-Wikimedia Commons: https://commons.wikimedia.org/wiki/File:Global_dimming%3F.jpg
-Cropped to the atmospheric sky/sun region only (the original also shows a
-street-level billboard, cropped out as visual clutter). Full credit also in
-webapp/assets/CREDITS.md and the page footer, per the CC BY attribution term.
-
-Loaded once at import time and embedded as base64 - there is no server-side
-templating step in a Streamlit page, so this is the only way to get an image
-into a single injected <style> block. Degrades to no image (flat canvas
-color only) if the file is ever missing, same as the rest of this theme.
+No hero background photo - tried twice (an unlicensed stock photo, then a
+properly-licensed Lahore smog photo), and the project owner settled on a
+plain flat canvas instead. If a photo goes back in later, keep it out of the
+main CSS = f\"\"\" block itself - substitute it in afterwards via a placeholder
+token and .replace(), the way it was done both times, rather than turning the
+whole ~750-line block into an f-string (every literal brace in it would need
+doubling to {{ }}, which is exactly what made this file fragile before).
 """
-import base64
-import os
 from datetime import datetime
 import streamlit as st
-
-_BG_B64 = ""
-try:
-    _asset_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "hero_bg.jpg")
-    if os.path.exists(_asset_path):
-        with open(_asset_path, "rb") as f:
-            _BG_B64 = base64.b64encode(f.read()).decode("utf-8")
-except Exception:
-    _BG_B64 = ""
-
-_BG_CSS_URL = f"url('data:image/jpeg;base64,{_BG_B64}')" if _BG_B64 else "none"
 
 CSS = """
 <style>
@@ -81,38 +62,10 @@ html, body, [data-testid="stApp"] {
     inset 0 0 140px 45px rgba(99, 102, 241, 0.22);
 }
 
-/* Hero photo confined to a fixed-height band at the top of the page, not
-   stretched across the whole scrollable container - the earlier version of
-   this rule sized the gradient to 100% of the container's full (very long,
-   scroll-dependent) height while the image sized to "auto" independently,
-   which could make the two drift out of sync on a long page. Fixing both
-   layers to the SAME explicit height keeps them in lockstep regardless of
-   how much content follows, and content below the band simply sees the flat
-   background-color. */
+/* Flat canvas - no background image or gradient here on purpose. */
 [data-testid="stAppViewContainer"] {
   background-color: var(--bg-canvas) !important;
-  /* Six stops, not two, and full opacity only at the very last stop - the
-     original two-stop version reached 100% opaque by 88% and then held flat
-     for the remaining 12%, which reads as a visible band/seam rather than a
-     fade (confirmed by screenshot: a distinct grey stripe, not a gradual
-     wash). More stops with an eased curve removes that plateau. */
-  background-image:
-    linear-gradient(180deg,
-      rgba(237, 236, 235, 0) 0%,
-      rgba(237, 236, 235, .12) 28%,
-      rgba(237, 236, 235, .35) 50%,
-      rgba(237, 236, 235, .65) 70%,
-      rgba(237, 236, 235, .9) 88%,
-      #edeceb 100%),
-    __HERO_BG_URL__ !important;
-  background-size: 100% 480px, 100% 480px;
-  /* Both layers are sized to EXACTLY fill their positioning box (100% width,
-     480px height matching the box itself), so there is no slack for
-     background-position to shift within - a position other than top-left
-     here would be a no-op. Left as "top center" for both, honestly. */
-  background-position: top center, top center;
-  background-repeat: no-repeat, no-repeat;
-  background-attachment: scroll, scroll;
+  background-image: none !important;
 }
 
 [data-testid="stHeader"] {
@@ -779,12 +732,6 @@ li[role="option"]:hover, li[aria-selected="true"] {
 }
 </style>
 """
-
-# Substitute the actual (possibly-missing) image URL after the fact, rather
-# than making the whole 750-line CSS block an f-string - that would require
-# every literal `{`/`}` in the CSS to be doubled to `{{`/`}}`, which is easy
-# to get subtly wrong at this size and has broken this exact file before.
-CSS = CSS.replace("__HERO_BG_URL__", _BG_CSS_URL)
 
 
 def inject_theme() -> None:

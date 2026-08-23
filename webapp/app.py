@@ -379,10 +379,6 @@ def main():
         f'<div><strong>{CITY_NAME}</strong> AQI Forecast</div>'
         f'<div>Source: {source_label} · CAMS Air Quality &amp; ECMWF Weather Models</div>'
         f'<div>Latest Observation: {obs_time:%Y-%m-%d %H:%M} PKT · Page Rendered: {now_local_naive():%H:%M} PKT</div>'
-        f'<div style="margin-top:6px;font-size:0.72rem;opacity:0.75;">'
-        f'Sky photo: <a href="https://commons.wikimedia.org/wiki/File:Global_dimming%3F.jpg" target="_blank">Tore Urnes</a>, '
-        f'<a href="https://creativecommons.org/licenses/by/2.0/" target="_blank">CC BY 2.0</a>'
-        f'</div>'
         f'</div>'
     )
     st.markdown(footer_html, unsafe_allow_html=True)
