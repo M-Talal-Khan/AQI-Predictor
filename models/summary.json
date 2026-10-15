@@ -7,24 +7,24 @@
     "rmse_lift_vs_best_baseline_pct": 29.6
   },
   "48h": {
-    "best_model": "tensorflow_mlp",
-    "rmse": 29.432209133957144,
-    "mae": 22.087227352285282,
-    "r2": 0.6932636939908723,
-    "rmse_lift_vs_best_baseline_pct": 24.5
+    "best_model": "xgboost",
+    "rmse": 30.718197287702353,
+    "mae": 22.804552245232223,
+    "r2": 0.6658735070942174,
+    "rmse_lift_vs_best_baseline_pct": 21.2
   },
   "72h": {
     "best_model": "tensorflow_mlp",
-    "rmse": 28.84061694624459,
-    "mae": 21.548118584887625,
-    "r2": 0.7060004618206052,
-    "rmse_lift_vs_best_baseline_pct": 31.0
+    "rmse": 28.70026835218513,
+    "mae": 21.84548191365279,
+    "r2": 0.7088549099885996,
+    "rmse_lift_vs_best_baseline_pct": 31.4
   },
   "_overall": {
-    "mean_r2": 0.7423623750601824,
-    "weakest_r2": 0.6932636939908723,
+    "mean_r2": 0.7341837954839622,
+    "weakest_r2": 0.6658735070942174,
     "target_mean_r2": 0.7,
     "target_weakest_r2": 0.6,
-    "trained_at": "2026-10-14T08:33:30"
+    "trained_at": "2026-10-15T08:08:59"
   }
 }
